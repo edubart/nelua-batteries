@@ -1,0 +1,12 @@
+require 'backtrace'
+
+local function foo()
+  local message = backtrace:traceback('hi')
+  print(message)
+end
+
+local function boo()
+  foo()
+end
+
+boo()
