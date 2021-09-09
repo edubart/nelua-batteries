@@ -1,0 +1,76 @@
+-- ffi.nelua, Cross-Platform Nelua FFI module!
+##[[
+if ccinfo.is_haiku or ccinfo.is_beos then
+  cinclude '<be/kernel/image.h>'
+elseif ccinfo.is_unix then
+  cdefine '_GNU_SOURCE'
+  cinclude '<dlfcn.h>'
+  linklib 'dl'
+elseif ccinfo.is_windows then
+  cdefine 'CINTERFACE'
+  cinclude '<windows.h>'
+  linklib 'kernel32'
+end
+]]
+
+-- image.h (BeOS/Haiku)
+global B_SYMBOL_TYPE_DATA:  cint <comptime> = 0x1
+global B_SYMBOL_TYPE_TEXT:  cint <comptime> = 0x2
+global B_SYMBOL_TYPE_ANY:   cint <comptime> = 0x5
+
+global function load_add_on(file: cstring): pointer <cimport, nodecl> end
+global function get_image_symbol(handle: pointer, name: cstring, mode: cint, symbol_handle: pointer) <cimport, nodecl> end
+global function unload_add_on(handle: pointer): cint <cimport, nodecl> end
+
+-- dlfcn (Linux/Unix)
+global RTLD_LAZY:           cint <comptime> = 0x00001
+global RTLD_NOW:            cint <comptime> = 0x00002
+global RTLD_BINDING_MASK:   cint <comptime> = 0x3
+global RTLD_NOLOAD:         cint <comptime> = 0x00004
+global RTLD_DEEPBIND:       cint <comptime> = 0x00008
+global RTLD_GLOBAL:         cint <comptime> = 0x00100
+global RTLD_LOCAL:          cint <comptime> = 0
+global RTLD_NODELETE:       cint <comptime> = 0x01000
+
+global function dlopen(file: cstring, mode: cint): pointer <cimport, nodecl> end
+global function dlsym(handle: pointer, name: cstring): pointer <cimport, nodecl> end
+global function dlclose(handle: pointer): cint <cimport, nodecl> end
+
+-- libloaderapi (Microsoft)
+global function LoadLibraryA(file: cstring): pointer <cimport, nodecl> end
+global function GetProcAddress(handle: pointer, name: cstring): pointer <cimport, nodecl> end
+global function FreeLibrary(handle: pointer): cint <cimport, nodecl> end
+
+global ffi = @record {}
+
+function ffi.load(file: cstring): pointer
+## if ccinfo.is_haiku or ccinfo.is_beos then
+  return load_add_on(file)
+## elseif ccinfo.is_unix then
+  return dlopen(file, RTLD_GLOBAL)
+## elseif ccinfo.is_windows then
+  return LoadLibraryA(file)
+## end
+end
+
+function ffi.get(handle: pointer, name: cstring): pointer
+## if ccinfo.is_haiku or ccinfo.is_beos then
+  local sym: pointer
+  get_image_symbol(handle, name, B_SYMBOL_TYPE_ANY, &sym)
+  return sym
+## elseif ccinfo.is_unix then
+  return dlsym(handle, name)
+## elseif ccinfo.is_windows then
+  return GetProcAddress(handle, name)
+## end
+end
+
+function ffi.unload(handle: pointer): cint
+## if ccinfo.is_haiku or ccinfo.is_beos then
+  return unload_add_on(handle)
+## elseif ccinfo.is_unix then
+  return dlclose(handle)
+## elseif ccinfo.is_windows then
+  return FreeLibrary(handle) == 1 and 0 or -1
+## end
+end

@@ -1,0 +1,20 @@
+require "ffi"
+
+local function main(): cint
+  local libpath: cstring
+
+## if ccinfo.is_windows then
+  libpath = "F42.dll"
+## else
+  libpath = "./F42.so"
+## end
+
+  local lib: pointer = ffi.load(libpath)
+  local f42 = (@function(): cuint)(ffi.get(lib, "F42"))
+  
+  print(f42())
+  
+  return ffi.unload(lib)
+end
+
+main()
