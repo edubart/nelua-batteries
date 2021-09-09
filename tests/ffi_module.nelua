@@ -1,0 +1,5 @@
+## pragmas.noentrypoint = true
+
+local function f42(): cint <cexport, codename'f42'>
+  return 42
+end

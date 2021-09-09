@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.nelua text eol=lf linguist-language=lua
+*.h text eol=lf linguist-language=c
+*.c text eol=lf linguist-language=c

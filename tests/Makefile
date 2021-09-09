@@ -1,6 +1,16 @@
 NELUA=nelua
-NFLAGS=-L ..
+CC=gcc
+NFLAGS=--cc=$(CC) -L..
+NELUARUN=$(NELUA) $(NFLAGS)
 
-test:
-	$(NELUA) $(NFLAGS) backtrace_test.nelua
+test: \
+	test-backtrace \
+	test-ffi
+
+test-backtrace:
+	$(NELUARUN) backtrace_test.nelua
+
+test-ffi:
+	$(NELUARUN) --shared-lib ffi_module.nelua -o ffi_module
+	$(NELUARUN) ffi_test.nelua
 
