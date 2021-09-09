@@ -175,10 +175,10 @@ require 'string'
 
 local function traceback_callback(data: pointer, pc: usize, filename: cstring, lineno: cint, func: cstring): cint
   local sb: *stringbuilder = (@*stringbuilder)(data)
-  sb:write_format('\n\t0x%016x', pc)
-  sb:write_format(' %s', func and func or "???"_cstring)
-  sb:write_format(' %s', filename and filename or "???"_cstring)
-  sb:write_format(':%d', lineno)
+  sb:writef('\n\t0x%016x', pc)
+  sb:writef(' %s', func and func or "???"_cstring)
+  sb:writef(' %s', filename and filename or "???"_cstring)
+  sb:writef(':%d', lineno)
   return 0
 end
 
@@ -194,14 +194,14 @@ function Backtrace:traceback(message: facultative(stringview), level: facultativ
   local sb: stringbuilder
   sb:prepare(4096)
   ## if not message.type.is_niltype then
-  sb:write_format("%s\n", message)
+  sb:writef("%s\n", message)
   ## end
-  sb:write_string('stack traceback:')
+  sb:write('stack traceback:')
   ## if level.type.is_niltype then
   local level: integer = 1
   ## end
   self:full(level, traceback_callback, traceback_error_callback, &sb)
-  return sb:promotestring()
+  return sb:promote()
 end
 
 local function backtrace_create_error_callback(data: pointer, msg: cstring, errnum: cint): void
