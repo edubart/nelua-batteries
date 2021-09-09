@@ -8,6 +8,7 @@ while the Nelua compiler is "Tier 1" quality,
 this means that APIs here are more unstable and less tested than the Nelua standard libraries.
 * All libraries binding other C libraries provide not just the bindings,
 but also a wrapper to make it easier to use it with Nelua.
+* All libraries wraps its API into a namespace style record, that is, it will not pollute the global environment.
 * Some libraries may be maintained irregularly, depending on the author.
 * Some libraries are created and maintained by the community, thus the quality may vary.
 * Some libraries are not fully tested.
