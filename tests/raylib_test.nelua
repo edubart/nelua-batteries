@@ -1,0 +1,39 @@
+require "raylib"
+
+-- Initialization
+--------------------------------------------------------------------------------------
+local screenWidth = 800
+local screenHeight = 450
+
+InitWindow(screenWidth,screenHeight, "raylib-nelua [core] example - basic window")
+
+SetTargetFPS(60);               -- Set our game to run at 60 frames-per-second
+
+--------------------------------------------------------------------------------------
+
+-- Main game loop
+
+while not WindowShouldClose() do
+	
+	-- Update
+    ----------------------------------------------------------------------------------
+    -- TODO: Update your variables here
+    ----------------------------------------------------------------------------------
+
+    -- Draw
+    ----------------------------------------------------------------------------------
+
+	BeginDrawing()
+
+		ClearBackground(RAYWHITE)
+
+		 DrawText("Congrats! You created your first window!", 190, 200, 20, LIGHTGRAY)
+
+	EndDrawing()
+	----------------------------------------------------------------------------------
+end
+
+    -- De-Initialization
+    ------------------------------------------------------------------------------------
+    CloseWindow()        -- Close window and OpenGL context
+   	------------------------------------------------------------------------------------
