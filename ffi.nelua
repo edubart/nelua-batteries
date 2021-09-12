@@ -4,42 +4,42 @@ This library can be used to load/unload shared libraries and symbols from it.
 ]]
 
 ##[[
-if ccinfo.is_haiku or ccinfo.is_beos then
-  cinclude '<be/kernel/image.h>'
-elseif ccinfo.is_windows then
-  cinclude '<windows.h>'
-  linklib 'kernel32'
-elseif ccinfo.is_unix then
+if ccinfo.is_unix then
   cinclude '<dlfcn.h>'
   if ccinfo.is_linux then -- we only need to link 'dl' on linux
     linklib 'dl'
   end
+elseif ccinfo.is_windows then
+  cinclude '<windows.h>'
+  linklib 'kernel32'
+elseif ccinfo.is_haiku or ccinfo.is_beos then
+  cinclude '<be/kernel/image.h>'
 else
   static_error 'ffi module is not unsupported in your platform'
 end
 ]]
 
-## if ccinfo.is_haiku or ccinfo.is_beos then
-local B_SYMBOL_TYPE_ANY: cint <cimport,nodecl>
-local B_OK: cint <cimport,nodecl>
-local function load_add_on(file: cstring): pointer <cimport,nodecl> end
-local function get_image_symbol(handle: pointer, name: cstring, mode: cint, symbol_handle: pointer): cint <cimport,nodecl> end
-local function unload_add_on(handle: pointer): cint <cimport,nodecl> end
-## elseif ccinfo.is_windows then
-local function LoadLibraryA(file: cstring): pointer <cimport,nodecl> end
-local function GetProcAddress(handle: pointer, name: cstring): pointer <cimport,nodecl> end
-local function FreeLibrary(handle: pointer): cint <cimport,nodecl> end
-## elseif ccinfo.is_unix then
+## if ccinfo.is_unix then
 local RTLD_NOW: cint <cimport,nodecl>
 local RTLD_GLOBAL: cint <cimport,nodecl>
 local function dlopen(file: cstring, mode: cint): pointer <cimport,nodecl> end
 local function dlsym(handle: pointer, name: cstring): pointer <cimport,nodecl> end
 local function dlclose(handle: pointer): cint <cimport,nodecl> end
+## elseif ccinfo.is_windows then
+local function LoadLibraryA(file: cstring): pointer <cimport,nodecl> end
+local function GetProcAddress(handle: pointer, name: cstring): pointer <cimport,nodecl> end
+local function FreeLibrary(handle: pointer): cint <cimport,nodecl> end
+## elseif ccinfo.is_haiku or ccinfo.is_beos then
+local B_SYMBOL_TYPE_ANY: cint <cimport,nodecl>
+local B_OK: cint <cimport,nodecl>
+local function load_add_on(file: cstring): cint <cimport,nodecl> end
+local function get_image_symbol(image: cint, name: cstring, mode: cint, symbol_handle: pointer): cint <cimport,nodecl> end
+local function unload_add_on(image: cint): cint <cimport,nodecl> end
 ## end
 
 -- FFI record, containing a handle for the library.
 global ffi = @record{
-  handle: pointer
+  handle: pointer,
 }
 
 --[[
@@ -47,12 +47,14 @@ Loads shared library from filename `file` and returns an FFI handle.
 In case the load failed, then `isloaded` will return false.
 ]]
 function ffi.load(file: cstring): ffi
-## if ccinfo.is_haiku or ccinfo.is_beos then
-  return ffi{handle=load_add_on(file)}
-## elseif ccinfo.is_unix then
+## if ccinfo.is_unix then
   return ffi{handle=dlopen(file, RTLD_NOW | RTLD_GLOBAL)}
 ## elseif ccinfo.is_windows then
   return ffi{handle=LoadLibraryA(file)}
+## elseif ccinfo.is_haiku or ccinfo.is_beos then
+  local image: isize = load_add_on(file)
+  if image <= 0 then return ffi{handle=nilptr} end
+  return ffi{handle=(@pointer)(image)}
 ## end
 end
 
@@ -67,25 +69,25 @@ In case it does not exist, returns nilptr.
 ]]
 function ffi:get(name: cstring): pointer
   if self.handle == nilptr then return nilptr end
-## if ccinfo.is_haiku or ccinfo.is_beos then
-  local sym: pointer
-  return get_image_symbol(self.handle, name, B_SYMBOL_TYPE_ANY, &sym) == B_OK and sym or nilptr
-## elseif ccinfo.is_unix then
+## if ccinfo.is_unix then
   return dlsym(self.handle, name)
 ## elseif ccinfo.is_windows then
   return GetProcAddress(self.handle, name)
+## elseif ccinfo.is_haiku or ccinfo.is_beos then
+  local sym: pointer
+  return get_image_symbol((@isize)(self.handle), name, B_SYMBOL_TYPE_ANY, &sym) == B_OK and sym or nilptr
 ## end
 end
 
 -- Unloads shared library, returns `true` when it is successfully unloaded.
 function ffi:unload(): boolean
   if self.handle == nilptr then return false end
-## if ccinfo.is_haiku or ccinfo.is_beos then
-  local ok: boolean = unload_add_on(self.handle)
-## elseif ccinfo.is_unix then
+## if ccinfo.is_unix then
   local ok: boolean = dlclose(self.handle) == 0
 ## elseif ccinfo.is_windows then
   local ok: boolean = FreeLibrary(self.handle) ~= 0
+## elseif ccinfo.is_haiku or ccinfo.is_beos then
+  local ok: boolean = unload_add_on((@isize)(self.handle)) == 0
 ## end
   if ok then self.handle = nilptr end
   return ok
