@@ -1,0 +1,244 @@
+-- xinput.nelua, XInput bindings for Nelua!
+## if ccinfo.is_windows then
+##[[
+  cinclude '<Xinput.h>'
+  linklib "XInput"
+  linklib "XInput9_1_0"
+]]
+
+## if ccinfo.is_64 then
+  global wchar_t: type <cimport, nodecl> = @cint 
+## else
+  global wchar_t: type <cimport, nodecl> = @culong
+## end
+
+## else
+  error("XInput is not supported on your platform!", 2)
+## end
+
+--[[
+  Bitmasks for the joysticks buttons, determines what has
+  been pressed on the joystick, these need to be mapped
+  to whatever device you're using instead of an xbox 360
+  joystick
+]]
+
+global XINPUT_GAMEPAD_DPAD_UP: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_DPAD_DOWN: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_DPAD_LEFT: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_DPAD_RIGHT: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_START: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_BACK: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_LEFT_THUMB: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_RIGHT_THUMB: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_LEFT_SHOULDER: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_RIGHT_SHOULDER: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_A: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_B: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_X: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_Y: cint <cimport, nodecl, const>
+
+--[[
+  Defines the flags used to determine if the user is pushing
+  down on a button, not holding a button, etc
+]]
+
+global XINPUT_KEYSTROKE_KEYDOWN: cint <cimport, nodecl, const>
+global XINPUT_KEYSTROKE_KEYUP: cint <cimport, nodecl, const>
+global XINPUT_KEYSTROKE_REPEAT: cint <cimport, nodecl, const>
+
+--[[
+  Defines the codes which are returned by XInputGetKeystroke
+]]
+
+global VK_PAD_A: cint <cimport, nodecl, const>
+global VK_PAD_B: cint <cimport, nodecl, const>
+global VK_PAD_X: cint <cimport, nodecl, const>
+global VK_PAD_Y: cint <cimport, nodecl, const>
+global VK_PAD_RSHOULDER: cint <cimport, nodecl, const>
+global VK_PAD_LSHOULDER: cint <cimport, nodecl, const>
+global VK_PAD_LTRIGGER: cint <cimport, nodecl, const>
+global VK_PAD_RTRIGGER: cint <cimport, nodecl, const>
+global VK_PAD_DPAD_UP: cint <cimport, nodecl, const>
+global VK_PAD_DPAD_DOWN: cint <cimport, nodecl, const>
+global VK_PAD_DPAD_LEFT: cint <cimport, nodecl, const>
+global VK_PAD_DPAD_RIGHT: cint <cimport, nodecl, const>
+global VK_PAD_START: cint <cimport, nodecl, const>
+global VK_PAD_BACK: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_PRESS: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_PRESS: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_UP: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_DOWN: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_RIGHT: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_LEFT: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_UPLEFT: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_UPRIGHT: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_DOWNRIGHT: cint <cimport, nodecl, const>
+global VK_PAD_LTHUMB_DOWNLEFT: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_UP: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_DOWN: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_RIGHT: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_LEFT: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_UPLEFT: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_UPRIGHT: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_DOWNRIGHT: cint <cimport, nodecl, const>
+global VK_PAD_RTHUMB_DOWNLEFT: cint <cimport, nodecl, const>
+
+--[[
+  Deadzones are for analogue joystick controls on the joypad
+  which determine when input should be assumed to be in the
+  middle of the pad. This is a threshold to stop a joypad
+  controlling the game when the player isn't touching the
+  controls.
+]]
+
+global XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE: cint <cimport, nodecl, const>
+global XINPUT_GAMEPAD_TRIGGER_THRESHOLD: cint <cimport, nodecl, const>
+
+
+--[[
+  Defines what type of abilities the type of joystick has
+  DEVTYPE_GAMEPAD is available for all joysticks, however
+  there may be more specific identifiers for other joysticks
+  which are being used.
+]]
+
+global XINPUT_DEVTYPE_GAMEPAD: cint <cimport, nodecl, const>
+global XINPUT_DEVSUBTYPE_GAMEPAD: cint <cimport, nodecl, const>
+global XINPUT_DEVSUBTYPE_WHEEL: cint <cimport, nodecl, const>
+global XINPUT_DEVSUBTYPE_ARCADE_STICK: cint <cimport, nodecl, const>
+global XINPUT_DEVSUBTYPE_FLIGHT_SICK: cint <cimport, nodecl, const>
+global XINPUT_DEVSUBTYPE_DANCE_PAD: cint <cimport, nodecl, const>
+global XINPUT_DEVSUBTYPE_GUITAR: cint <cimport, nodecl, const>
+global XINPUT_DEVSUBTYPE_DRUM_KIT: cint <cimport, nodecl, const>
+
+--[[
+  These are used with the XInputGetCapabilities function to
+  determine the abilities to the joystick which has been
+  plugged in.
+]]
+
+global XINPUT_CAPS_VOICE_SUPPORTED: cint <cimport, nodecl, const>
+global XINPUT_FLAG_GAMEPAD: cint <cimport, nodecl, const>
+
+--[[
+  Defines the status of the battery if one is used in the
+  attached joystick. The first two define if the joystick
+  supports a battery. Disconnected means that the joystick
+  isn't connected. Wired shows that the joystick is a wired
+  joystick.
+]]
+
+global BATTERY_DEVTYPE_GAMEPAD: cint <cimport, nodecl, const>
+global BATTERY_DEVTYPE_HEADSET: cint <cimport, nodecl, const>
+global BATTERY_TYPE_DISCONNECTED: cint <cimport, nodecl, const>
+global BATTERY_TYPE_WIRED: cint <cimport, nodecl, const>
+global BATTERY_TYPE_ALKALINE: cint <cimport, nodecl, const>
+global BATTERY_TYPE_NIMH: cint <cimport, nodecl, const>
+global BATTERY_TYPE_UNKNOWN: cint <cimport, nodecl, const>
+global BATTERY_LEVEL_EMPTY: cint <cimport, nodecl, const>
+global BATTERY_LEVEL_LOW: cint <cimport, nodecl, const>
+global BATTERY_LEVEL_MEDIUM: cint <cimport, nodecl, const>
+global BATTERY_LEVEL_FULL: cint <cimport, nodecl, const>
+
+--[[
+  How many joysticks can be used with this library. Games that
+  use the xinput library will not go over this number.
+]]
+
+global XUSER_MAX_COUNT: cint <cimport, nodecl, const>
+global XUSER_INDEX_ANY: cint <cimport, nodecl, const>
+
+--[[
+  Defines the structure of an xbox 360 joystick.
+]]
+
+global XINPUT_GAMEPAD: type <cimport, nodecl> = @record {
+  wButtons: cushort,
+  bLeftTrigger: cuchar,
+  bRightTrigger: cuchar,
+  sThumbLX: cshort,
+  sThumbLY: cshort,
+  sThumbRX: cshort,
+  sThumbRY: cshort
+}
+
+--global PXINPUT_GAMEPAD: type <cimport, nodecl> = *XINPUT_GAMEPAD
+
+global XINPUT_STATE: type <cimport, nodecl> = @record {
+  dwPacketNumber: culong,
+  Gamepad: XINPUT_GAMEPAD
+}
+
+--global PXINPUT_STATE: type <cimport, nodecl> = *XINPUT_STATE
+
+--[[
+  Defines the structure of how much vibration is set on both the
+  right and left motors in a joystick. If you're not using a 360
+  joystick you will have to map these to your device.
+]]
+
+global XINPUT_VIBRATION: type <cimport, nodecl> = @record {
+  wLeftMotorSpeed: cushort,
+  wRightMotorSpeed: cushort
+}
+
+--global PXINPUT_VIBRATION: type <cimport, nodecl> = *XINPUT_VIBRATION
+
+--[[
+  Defines the structure for what kind of abilities the joystick has
+  such abilities are things such as if the joystick has the ability
+  to send and receive audio, if the joystick is in fact a driving
+  wheel or perhaps if the joystick is some kind of dance pad or
+  guitar.
+]]
+
+global XINPUT_CAPABILITIES: type <cimport, nodecl> = @record {
+  Type: cuchar,
+  SubType: cuchar,
+  Flags: cushort,
+  Gamepad: XINPUT_GAMEPAD,
+  Vibration: XINPUT_VIBRATION
+}
+
+--global PXINPUT_CAPABILITIES: type <cimport, nodecl> = *XINPUT_CAPABILITIES
+
+--[[
+  Defines the structure for a joystick input event which is
+  retrieved using the function XInputGetKeystroke
+]]
+
+global XINPUT_KEYSTROKE: type <cimport, nodecl> = @record {
+  VirtualKey: cushort,
+  Unicode: wchar_t,
+  Flags: cushort,
+  UserIndex: cuchar,
+  HidCode: cuchar
+}
+
+--global PXINPUT_KEYSTROKE: type <cimport, nodecl> = *XINPUT_KEYSTROKE
+
+global XINPUT_BATTERY_INFORMATION: type <cimport, nodecl> = @record {
+  BatteryType: cuchar,
+  BatteryLevel: cuchar
+}
+
+--global PXINPUT_BATTERY_INFORMATION: type <cimport, nodecl> = *XINPUT_BATTERY_INFORMATION
+
+global GUID: type <cimport, nodecl> = @record {
+  Data1: culong,
+  Data2: cushort,
+  Data3: cushort,
+  Data4: [8]cuchar
+}
+
+global function XInputEnable(enable: cint) <cimport, nodecl> end
+global function XInputSetState(dwUserIndex: culong, pVibration: *XINPUT_VIBRATION): culong <cimport, nodecl> end
+global function XInputGetState(dwUserIndex: culong, pState: *XINPUT_STATE): culong <cimport, nodecl> end
+global function XInputGetKeystroke(dwUserIndex: culong, dwReserved: culong, pKeystroke: *XINPUT_KEYSTROKE): culong <cimport, nodecl> end
+global function XInputGetCapabilities(dwUserIndex: culong, dwFlags: culong, pCapabilities: *XINPUT_CAPABILITIES): culong <cimport, nodecl> end
+global function XInputGetDSoundAudioDeviceGuids(dwUserIndex: culong, pDSoundRenderGuid: *GUID, pDSoundCaptureGuid: *GUID): culong <cimport, nodecl> end
+global function XInputGetBatteryInformation(dwUserIndex: culong, devType: cuchar, pBatteryInformation: *XINPUT_BATTERY_INFORMATION): culong <cimport, nodecl> end
+global function XInputGetAudioDeviceIds(dwUserIndex: culong): culong <cimport, nodecl> end
+global function XInputGetAudioDeviceIds(dwUserIndex: culong, pRenderDeviceId: *wchar_t <const>, pRenderCount: *cuint, pCaptureDeviceId: *wchar_t <const>, pCaptureCount: *cuint): culong <cimport, nodecl> end

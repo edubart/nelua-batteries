@@ -1,0 +1,42 @@
+require "XInput"
+require "C.string"
+require "C.arg"
+
+local joystate = @record {
+  previous: XINPUT_STATE,
+  current: XINPUT_STATE
+}
+
+local function main(argc: cint, argv: *[0]cstring): cint
+  local state: joystate
+  local connected: culong
+  
+  -- Check if the Joystick connected
+  C.memset(&state.current, 0, #XINPUT_STATE)
+  connected = XInputGetState(0, &state.current)
+  
+  if connected ~= 0 then
+    print("ERROR [-1]: No Joystick!")
+    return -1
+  else
+    print("LOG: PROGRAM RUNNING, TO TERMINATE PRESS START BUTTON FROM YOUR JOYSTICK!")
+    
+    while connected == 0 do
+      -- Update the states
+      C.memset(&state.previous, 0, #XINPUT_STATE)
+      state.previous = state.current
+      C.memset(&state.current, 0, #XINPUT_STATE)
+      connected = XInputGetState(0, &state.current)
+    
+      -- If START button is down then terminate program
+      if connected and (state.current.Gamepad.wButtons & XINPUT_GAMEPAD_START > 0) and (state.previous.Gamepad.wButtons ~= state.current.Gamepad.wButtons) then
+        print("LOG: PROGRAM TERMINATED!")
+        break
+      end
+    end
+  end
+  
+  return 0
+end
+
+return main(C.argc, C.argv)
