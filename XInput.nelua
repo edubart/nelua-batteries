@@ -1,7 +1,7 @@
 -- xinput.nelua, XInput bindings for Nelua!
 ## if ccinfo.is_windows then
 ##[[
-  cinclude '<Xinput.h>'
+  cinclude '<xinput.h>'
   linklib "XInput"
   linklib "XInput9_1_0"
 ]]
