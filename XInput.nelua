@@ -6,12 +6,6 @@
   linklib "XInput9_1_0"
 ]]
 
-## if ccinfo.is_64 then
-  global wchar_t: type <cimport, nodecl> = @cint 
-## else
-  global wchar_t: type <cimport, nodecl> = @culong
-## end
-
 ## else
   error("XInput is not supported on your platform!", 2)
 ## end
@@ -164,14 +158,10 @@ global XINPUT_GAMEPAD: type <cimport, nodecl> = @record {
   sThumbRY: cshort
 }
 
---global PXINPUT_GAMEPAD: type <cimport, nodecl> = *XINPUT_GAMEPAD
-
 global XINPUT_STATE: type <cimport, nodecl> = @record {
   dwPacketNumber: culong,
   Gamepad: XINPUT_GAMEPAD
 }
-
---global PXINPUT_STATE: type <cimport, nodecl> = *XINPUT_STATE
 
 --[[
   Defines the structure of how much vibration is set on both the
@@ -183,8 +173,6 @@ global XINPUT_VIBRATION: type <cimport, nodecl> = @record {
   wLeftMotorSpeed: cushort,
   wRightMotorSpeed: cushort
 }
-
---global PXINPUT_VIBRATION: type <cimport, nodecl> = *XINPUT_VIBRATION
 
 --[[
   Defines the structure for what kind of abilities the joystick has
@@ -202,8 +190,6 @@ global XINPUT_CAPABILITIES: type <cimport, nodecl> = @record {
   Vibration: XINPUT_VIBRATION
 }
 
---global PXINPUT_CAPABILITIES: type <cimport, nodecl> = *XINPUT_CAPABILITIES
-
 --[[
   Defines the structure for a joystick input event which is
   retrieved using the function XInputGetKeystroke
@@ -211,20 +197,20 @@ global XINPUT_CAPABILITIES: type <cimport, nodecl> = @record {
 
 global XINPUT_KEYSTROKE: type <cimport, nodecl> = @record {
   VirtualKey: cushort,
-  Unicode: wchar_t,
+## if ccinfo.is_64 then
+  Unicode: cint,
+## else
+  Unicode: culong,
+## end
   Flags: cushort,
   UserIndex: cuchar,
   HidCode: cuchar
 }
 
---global PXINPUT_KEYSTROKE: type <cimport, nodecl> = *XINPUT_KEYSTROKE
-
 global XINPUT_BATTERY_INFORMATION: type <cimport, nodecl> = @record {
   BatteryType: cuchar,
   BatteryLevel: cuchar
 }
-
---global PXINPUT_BATTERY_INFORMATION: type <cimport, nodecl> = *XINPUT_BATTERY_INFORMATION
 
 global GUID: type <cimport, nodecl> = @record {
   Data1: culong,
@@ -240,5 +226,9 @@ global function XInputGetKeystroke(dwUserIndex: culong, dwReserved: culong, pKey
 global function XInputGetCapabilities(dwUserIndex: culong, dwFlags: culong, pCapabilities: *XINPUT_CAPABILITIES): culong <cimport, nodecl> end
 global function XInputGetDSoundAudioDeviceGuids(dwUserIndex: culong, pDSoundRenderGuid: *GUID, pDSoundCaptureGuid: *GUID): culong <cimport, nodecl> end
 global function XInputGetBatteryInformation(dwUserIndex: culong, devType: cuchar, pBatteryInformation: *XINPUT_BATTERY_INFORMATION): culong <cimport, nodecl> end
-global function XInputGetAudioDeviceIds(dwUserIndex: culong): culong <cimport, nodecl> end
-global function XInputGetAudioDeviceIds(dwUserIndex: culong, pRenderDeviceId: *wchar_t <const>, pRenderCount: *cuint, pCaptureDeviceId: *wchar_t <const>, pCaptureCount: *cuint): culong <cimport, nodecl> end
+
+## if ccinfo.is_64 then
+global function XInputGetAudioDeviceIds(dwUserIndex: culong, pRenderDeviceId: **cint <const>, pRenderCount: *cuint, pCaptureDeviceId: **cint <const>, pCaptureCount: *cuint): culong <cimport, nodecl> end
+## else
+global function XInputGetAudioDeviceIds(dwUserIndex: culong, pRenderDeviceId: **culong <const>, pRenderCount: *cuint, pCaptureDeviceId: **culong <const>, pCaptureCount: *cuint): culong <cimport, nodecl> end  
+## end
