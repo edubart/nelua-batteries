@@ -393,13 +393,16 @@ function fs.readlink(path: string): (string, string, integer)
     return (@string){}, 'windows error', GetLastError()
   end
   defer CloseHandle(h) end
-  local len = GetFinalPathNameByHandleA(h, &buf, #buf, FILE_NAME_OPENED)
+  local len: clong = GetFinalPathNameByHandleA(h, &buf, #buf, FILE_NAME_OPENED)
+  if len < 0 then
+    return (@string){}, 'windows error', GetLastError()
+  end
   ## else
   local len: cptrdiff = readlink(path, &buf, #buf)
-  ## end
   if len < 0 then
     return (@string){}, C.strerror(C.errno), C.errno
   end
+  ## end
   if len == #buf then
     return (@string){}, 'buffer truncated', -1
   end
