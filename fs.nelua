@@ -1,0 +1,264 @@
+require 'string'
+require 'C.time'
+
+## if ccinfo.is_windows then
+local function getcwd(buf: cstring, size: csize): cstring <cimport'_getcwd',cinclude'<direct.h>'> end
+local function chdir(path: cstring): cint <cimport'_chdir',cinclude'<direct.h>'> end
+local function mkdir(path: cstring, mode: cuint): cint <cimport'_mkdir',cinclude'<direct.h>'> end
+local function rmdir(path: cstring): cint <cimport'_rmdir',cinclude'<direct.h>'> end
+## else
+local stat_t: type <cimport,cinclude'<sys/stat.h>',cincomplete,ctypedef'stat'> = @record{
+  st_dev: culong,
+  st_ino: culong,
+  st_nlink: culong,
+  st_mode: cuint,
+  st_uid: cuint,
+  st_gid: cuint,
+  st_rdev: culong,
+  st_size: clong,
+  st_blksize: clong,
+  st_blocks: clong,
+  st_atim: C.timespec,
+  st_mtim: C.timespec,
+  st_ctim: C.timespec,
+}
+local function S_ISREG(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISDIR(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISLNK(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISSOCK(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISFIFO(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISCHR(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISBLK(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function getcwd(buf: cstring, size: csize): cstring <cimport,cinclude'<unistd.h>'> end
+local function chdir(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
+local function rmdir(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
+local function mkdir(path: cstring, mode: cuint): cint <cimport,cinclude'<sys/stat.h>'> end
+local function stat(file: cstring, buf: *stat_t): cint <cimport,cinclude'<sys/stat.h>'> end
+## end
+local FILE <cimport,cinclude'<stdio.h>',forwarddecl> = @record{}
+local function fopen(pathname: cstring, mode: cstring): *FILE <cimport,cinclude'<stdio.h>'> end
+local function fclose(fp: *FILE): cint <cimport,cinclude'<stdio.h>'> end
+local function fflush(fp: *FILE): cint <cimport,cinclude'<stdio.h>'> end
+local function ferror(fp: *FILE): cint <cimport,cinclude'<stdio.h>'> end
+local function fread(ptr: pointer, size: csize, n: csize, fp: *FILE): csize <cimport,cinclude'<stdio.h>'> end
+local function fwrite(ptr: pointer, size: csize, n: csize, fp: *FILE): csize <cimport,cinclude'<stdio.h>'> end
+local utimbuf: type <cimport,cinclude'<utime.h>',ctypedef> = @record{
+  actime: ctime_t,
+  modtime: ctime_t
+}
+local function utime(file: cstring, times: *utimbuf): cint <cimport,cinclude'<utime.h>'> end
+local function remove(pathname: cstring): cint <cimport,cinclude'<stdio.h>'> end
+local function rename(old: cstring, new: cstring): cint <cimport,cinclude'<stdio.h>'> end
+local function strerror(errnum: cint): cstring <cimport,cinclude'<string.h>'> end
+local errno: cint <cimport,cinclude'<errno.h>'>
+
+local fs = @record{}
+
+global fs.Kind = @enum(uint32){
+  INVALID   = 0,
+  FILE,
+  DIRECTORY,
+  LINK,
+  SOCKET,
+  PIPE,
+  CHARACTER,
+  BLOCK,
+  OTHER,
+}
+
+global fs.StatInfo = @record{
+  kind: fs.Kind,
+  dev: uint64,
+  ino: uint64,
+  nlink: uint64,
+  mode: uint32,
+  uid: uint32,
+  gid: uint32,
+  rdev: uint64,
+  size: int64,
+  blksize: int64,
+  blocks: int64,
+  atime: float64,
+  mtime: float64,
+  ctime: float64,
+}
+
+local function result_from_errno(ok: boolean): (boolean, string, integer) <inline>
+  if not ok then
+    return false, strerror(errno), errno
+  end
+  return true, (@string){}, 0
+end
+
+local function seconds_from_timespec(ts: C.timespec): float64 <inline>
+  return ts.tv_sec + (ts.tv_nsec / 1000000000_f64)
+end
+
+local function kind_from_mode(mode: cuint): fs.Kind <inline>
+  if S_ISREG(mode) then
+    return fs.Kind.FILE
+  elseif S_ISDIR(mode) then
+    return fs.Kind.DIRECTORY
+  elseif S_ISLNK(mode) then
+    return fs.Kind.LINK
+  elseif S_ISSOCK(mode) then
+    return fs.Kind.SOCKET
+  elseif S_ISFIFO(mode) then
+    return fs.Kind.PIPE
+  elseif S_ISCHR(mode) then
+    return fs.Kind.CHARACTER
+  elseif S_ISBLK(mode) then
+    return fs.Kind.BLOCK
+  end
+  return fs.Kind.OTHER
+end
+
+-- Returns the current working directory.
+function fs.cwdir(): (string, string, integer)
+  local MAX_PATH_SIZE <comptime> = 4096
+  local buf: [MAX_PATH_SIZE]cchar
+  if getcwd(&buf, #buf) == nilptr then
+    return (@string){}, strerror(errno), errno
+  end
+  return string.copy(&buf), (@string){}, 0
+end
+
+-- Changes the current working directory.
+function fs.chdir(path: string): (boolean, string, integer)
+  return result_from_errno(chdir(path) == 0)
+end
+
+-- Creates a directory.
+function fs.mkdir(path: string): (boolean, string, integer)
+  return result_from_errno(mkdir(path, 0755) == 0)
+end
+
+--[[
+Creates a file into `path` and write `contents`.
+If `contents` is not present then an empty is created.
+If the file exists, it will be overwritten.
+]]
+function fs.mkfile(path: string, contents: facultative(string)): (boolean, string, integer)
+  local fp: *FILE = fopen(path, 'wb')
+  if not fp then
+    return result_from_errno(false)
+  end
+  ## if not contents.type.is_niltype then
+  if contents.size > 0 and fwrite(contents.data, 1, contents.size, fp) <= 0 then
+    return result_from_errno(false)
+  end
+  ## end
+  return result_from_errno(fclose(fp) == 0)
+end
+
+-- Removes a directory.
+function fs.rmdir(path: string): (boolean, string, integer)
+  return result_from_errno(rmdir(path) == 0)
+end
+
+-- Removes a file.
+function fs.rmfile(path: string): (boolean, string, integer)
+  return result_from_errno(remove(path) == 0)
+end
+
+-- Moves a file or directory.
+function fs.move(oldpath: string, newpath: string): (boolean, string, integer)
+  return result_from_errno(rename(oldpath, newpath) == 0)
+end
+
+-- Update access and modification time of a file.
+function fs.touch(path: string): (boolean, string, integer)
+  return result_from_errno(utime(path, nilptr) == 0)
+end
+
+-- Get file status information.
+function fs.stat(path: string): (fs.StatInfo, string, integer)
+  local st: stat_t
+  if stat(path, &st) ~= 0 then
+    return (@fs.StatInfo){}, strerror(errno), errno
+  end
+  local si: fs.StatInfo = {
+    kind = kind_from_mode(st.st_mode),
+    dev = st.st_dev,
+    ino = st.st_ino,
+    nlink = st.st_nlink,
+    mode = st.st_mode,
+    uid = st.st_uid,
+    gid = st.st_gid,
+    rdev = st.st_rdev,
+    size = st.st_size,
+    blksize = st.st_blksize,
+    blocks = st.st_blocks,
+    atime = seconds_from_timespec(st.st_atim),
+    mtime = seconds_from_timespec(st.st_mtim),
+    ctime = seconds_from_timespec(st.st_ctim),
+  }
+  return si, (@string){}, 0
+end
+
+-- Checks if a file exists.
+function fs.isfile(path: string): boolean
+  local st: stat_t
+  return stat(path, &st) == 0 and not S_ISDIR(st.st_mode)
+end
+
+-- Checks if a directory exists.
+function fs.isdir(path: string): boolean
+  local st: stat_t
+  return stat(path, &st) == 0 and S_ISDIR(st.st_mode)
+end
+
+-- Read all contents from a file.
+function fs.readfile(path: string): (string, string, integer)
+  local fp: *FILE = fopen(path, 'rb')
+  if not fp then
+    return (@string){}, strerror(errno), errno
+  end
+  local READ_CHUNK_SIZE <comptime> = 1024
+  local sb: stringbuilder
+  repeat -- read in chunks
+    local p: span(byte) = sb:prepare(READ_CHUNK_SIZE)
+    if p:empty() then
+      return (@string){}, 'out of buffer memory', -1
+    end
+    local nr: csize = fread(p.data, 1, READ_CHUNK_SIZE, fp)
+    sb:commit(nr)
+  until nr < READ_CHUNK_SIZE
+  if ferror(fp) ~= 0 then
+    return (@string){}, strerror(errno), errno
+  end
+  return sb:promote(), (@string){}, 0
+end
+
+-- TODO:
+-- cpfile
+-- chmod
+-- chown
+-- mklink
+-- readlink
+-- walkdir
+
+## if TEST then
+local pwd = fs.cwdir()
+local newdir <close> = pwd..'/tempdir'
+local newdir2 <close> = pwd..'/tempdir2'
+assert(fs.chdir(pwd))
+assert(fs.mkdir(newdir))
+assert(fs.isdir(newdir))
+assert(fs.move(newdir, newdir2))
+assert(fs.rmdir(newdir2))
+
+if true then
+  assert(fs.mkfile('tmpfile'))
+  local si = fs.stat('tmpfile')
+  assert(si.kind == fs.Kind.FILE and si.size == 0)
+  assert(fs.isfile('tmpfile'))
+  assert(fs.touch('tmpfile'))
+  assert(fs.move('tmpfile', 'tmpfile2'))
+  assert(fs.rmfile('tmpfile2'))
+
+  assert(fs.mkfile('tmpfile', 'hello!'))
+  assert(fs.readfile('tmpfile') == 'hello!')
+  assert(fs.rmfile('tmpfile'))
+end
+## end
