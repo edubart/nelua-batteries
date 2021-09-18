@@ -1,12 +1,85 @@
+--[[
+File system module.
+
+Contains various utilities to manages files, directories and links.
+]]
+
 require 'string'
 require 'C.time'
+require 'C.stdio'
+require 'C.string'
+require 'C.errno'
 
-## if ccinfo.is_windows then
+## if ccinfo.is_windows then -- Import Windows APIs
+local stat_t: type <cimport,cinclude'<sys/stat.h>',cincomplete,ctypedef'_stati64'> = @record{
+  st_dev: culong,
+  st_ino: culong,
+  st_nlink: culong,
+  st_mode: cuint,
+  st_uid: cuint,
+  st_gid: cuint,
+  st_rdev: culong,
+  st_size: clong,
+  st_atime: int64,
+  st_mtime: int64,
+  st_ctime: int64,
+}
+local utimbuf: type <cimport,cinclude'<sys/utime.h>',ctypedef'_utime64'> = @record{
+  actime: int64,
+  modtime: int64
+}
+local WIN32_FILE_ATTRIBUTE_DATA: type <cimport,cinclude'@windows.h',cincomplete> = @record{
+  dwFileAttributes: clong
+}
+local _S_IFREG: cuint <cimport,cinclude'<sys/stat.h>',const>
+local _S_IFDIR: cuint <cimport,cinclude'<sys/stat.h>',const>
+local _S_IFCHR: cuint <cimport,cinclude'<sys/stat.h>',const>
+local _S_IFLNK: cuint <comptime> = 0x400
+local GetFileExInfoStandard: cint<cimport,cinclude'@windows.h',const>
+local GENERIC_READ: clong <cimport,cinclude'@windows.h',const>
+local FILE_SHARE_READ: clong <cimport,cinclude'@windows.h',const>
+local FILE_SHARE_WRITE: clong <cimport,cinclude'@windows.h',const>
+local OPEN_EXISTING: clong <cimport,cinclude'@windows.h',const>
+local FILE_ATTRIBUTE_NORMAL: clong <cimport,cinclude'@windows.h',const>
+local FILE_NAME_OPENED: clong <cimport,cinclude'@windows.h',const>
+local FILE_ATTRIBUTE_REPARSE_POINT: clong <cimport,cinclude'@windows.h',const>
+local INVALID_HANDLE_VALUE: pointer <cimport,cinclude'@windows.h',const>
+local function stat(file: cstring, buf: *stat_t): cint <cimport'_stati64',cinclude'<sys/stat.h>'> end
+local function chmod(file: cstring, mode: cuint): cint <cimport'_chmod',cinclude'<sys/stat.h>'> end
 local function getcwd(buf: cstring, size: csize): cstring <cimport'_getcwd',cinclude'<direct.h>'> end
 local function chdir(path: cstring): cint <cimport'_chdir',cinclude'<direct.h>'> end
-local function mkdir(path: cstring, mode: cuint): cint <cimport'_mkdir',cinclude'<direct.h>'> end
 local function rmdir(path: cstring): cint <cimport'_rmdir',cinclude'<direct.h>'> end
-## else
+local function mkdir(path: cstring): cint <cimport'_mkdir',cinclude'<direct.h>'> end
+local function unlink(name: cstring): cint <cimport'_unlink',cinclude'<io.h>'> end
+local function utime(file: cstring, times: *utimbuf): cint <cimport'_utime64',cinclude'<sys/utime.h>'> end
+local function GetFileAttributesEx(lpFileName: cstring, fInfoLevelId: cint, lpFileInformation: pointer): cint <cimport,cinclude'@windows.h'> end
+local function CreateSymbolicLinkA(to: cstring, from: cstring, flags: clong): byte <cimport,cinclude'@windows.h'> end
+local function CreateHardLinkA(to: cstring, from: cstring, attrs: pointer): cint <cimport,cinclude'@windows.h'> end
+local function GetLastError(): clong <cimport,cinclude'@windows.h'> end
+local function CloseHandle(hObject: pointer): cint <cimport,cinclude'@windows.h'> end
+local function CreateFileA(
+  lpFileName: cstring,
+  dwDesiredAccess: clong,
+  dwShareMode: clong,
+  lpSecurityAttributes: pointer,
+  dwCreationDisposition: clong,
+  dwFlagsAndAttributes: clong,
+  hTemplateFile: pointer
+): pointer <cimport,cinclude'@windows.h'> end
+local function GetFinalPathNameByHandleA(
+  hFile: pointer,
+  lpszFilePath: cstring,
+  cchFilePath: clong,
+  dwFlags: clong
+): clong <cimport,cinclude'@windows.h'> end
+local function S_ISREG(mode: cuint): boolean return mode & _S_IFREG ~= 0 end
+local function S_ISDIR(mode: cuint): boolean return mode & _S_IFDIR ~= 0 end
+local function S_ISCHR(mode: cuint): boolean return mode & _S_IFCHR ~= 0 end
+local function S_ISLNK(mode: cuint): boolean return mode & _S_IFLNK ~= 0 end
+local function S_ISFIFO(mode: cuint): boolean return false end
+local function S_ISSOCK(mode: cuint): boolean return false end
+local function S_ISBLK(mode: cuint): boolean return false end
+## else -- Import POSIX APIs
 local stat_t: type <cimport,cinclude'<sys/stat.h>',cincomplete,ctypedef'stat'> = @record{
   st_dev: culong,
   st_ino: culong,
@@ -18,44 +91,54 @@ local stat_t: type <cimport,cinclude'<sys/stat.h>',cincomplete,ctypedef'stat'> =
   st_size: clong,
   st_blksize: clong,
   st_blocks: clong,
-  st_atim: C.timespec,
-  st_mtim: C.timespec,
-  st_ctim: C.timespec,
+  st_atime: int64,
+  st_mtime: int64,
+  st_ctime: int64,
 }
+local utimbuf: type <cimport,cinclude'<utime.h>',ctypedef> = @record{
+  actime: int64,
+  modtime: int64
+}
+local S_IRUSR: cuint <cimport,cinclude'<sys/stat.h>',const>
+local S_IWUSR: cuint <cimport,cinclude'<sys/stat.h>',const>
+local S_IXUSR: cuint <cimport,cinclude'<sys/stat.h>',const>
+local S_IRGRP: cuint <cimport,cinclude'<sys/stat.h>',const>
+local S_IWGRP: cuint <cimport,cinclude'<sys/stat.h>',const>
+local S_IXGRP: cuint <cimport,cinclude'<sys/stat.h>',const>
+local S_IROTH: cuint <cimport,cinclude'<sys/stat.h>',const>
+local S_IWOTH: cuint <cimport,cinclude'<sys/stat.h>',const>
+local S_IXOTH: cuint <cimport,cinclude'<sys/stat.h>',const>
 local function S_ISREG(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
 local function S_ISDIR(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
-local function S_ISLNK(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
-local function S_ISSOCK(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
-local function S_ISFIFO(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
 local function S_ISCHR(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISLNK(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISFIFO(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function S_ISSOCK(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
 local function S_ISBLK(mode: cuint): boolean <cimport,cinclude'<sys/stat.h>'> end
+local function stat(file: cstring, buf: *stat_t): cint <cimport,cinclude'<sys/stat.h>'> end
+local function chmod(file: cstring, mode: cuint): cint <cimport,cinclude'<sys/stat.h>'> end
+local function mkdir(path: cstring, mode: cuint): cint <cimport,cinclude'<sys/stat.h>'> end
+local function lstat(file: cstring, buf: *stat_t): cint <cimport,cinclude'<sys/stat.h>'> end
 local function getcwd(buf: cstring, size: csize): cstring <cimport,cinclude'<unistd.h>'> end
 local function chdir(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
 local function rmdir(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
-local function mkdir(path: cstring, mode: cuint): cint <cimport,cinclude'<sys/stat.h>'> end
-local function stat(file: cstring, buf: *stat_t): cint <cimport,cinclude'<sys/stat.h>'> end
-## end
-local FILE <cimport,cinclude'<stdio.h>',forwarddecl> = @record{}
-local function fopen(pathname: cstring, mode: cstring): *FILE <cimport,cinclude'<stdio.h>'> end
-local function fclose(fp: *FILE): cint <cimport,cinclude'<stdio.h>'> end
-local function fflush(fp: *FILE): cint <cimport,cinclude'<stdio.h>'> end
-local function ferror(fp: *FILE): cint <cimport,cinclude'<stdio.h>'> end
-local function fread(ptr: pointer, size: csize, n: csize, fp: *FILE): csize <cimport,cinclude'<stdio.h>'> end
-local function fwrite(ptr: pointer, size: csize, n: csize, fp: *FILE): csize <cimport,cinclude'<stdio.h>'> end
-local utimbuf: type <cimport,cinclude'<utime.h>',ctypedef> = @record{
-  actime: ctime_t,
-  modtime: ctime_t
-}
+local function symlink(from: cstring, to: cstring): cint <cimport,cinclude'<unistd.h>'> end
+local function unlink(name: cstring): cint <cimport,cinclude'<unistd.h>'> end
+local function link(from: cstring, to: cstring): cint <cimport,cinclude'<unistd.h>'> end
+local function readlink(path: cstring, buf: cstring, len: csize): cptrdiff <cimport,cinclude'<unistd.h>'> end
+local function chown(file: cstring, owner: cuint, group: cuint): cint <cimport,cinclude'<unistd.h>'> end
 local function utime(file: cstring, times: *utimbuf): cint <cimport,cinclude'<utime.h>'> end
-local function remove(pathname: cstring): cint <cimport,cinclude'<stdio.h>'> end
-local function rename(old: cstring, new: cstring): cint <cimport,cinclude'<stdio.h>'> end
-local function strerror(errnum: cint): cstring <cimport,cinclude'<string.h>'> end
-local errno: cint <cimport,cinclude'<errno.h>'>
+## end
+local MAX_PATH_SIZE <comptime> = 4096
 
-local fs = @record{}
+global fs = @record{}
 
-global fs.Kind = @enum(uint32){
-  INVALID   = 0,
+-- Character separator for directories.
+global fs.sep: string <comptime> = #[ccinfo.is_windows and '\\' or '/']#
+
+-- File status kind.
+global fs.StatKind = @enum(uint32){
+  INVALID = 0,
   FILE,
   DIRECTORY,
   LINK,
@@ -66,8 +149,9 @@ global fs.Kind = @enum(uint32){
   OTHER,
 }
 
+-- File status information.
 global fs.StatInfo = @record{
-  kind: fs.Kind,
+  kind: fs.StatKind,
   dev: uint64,
   ino: uint64,
   nlink: uint64,
@@ -76,49 +160,56 @@ global fs.StatInfo = @record{
   gid: uint32,
   rdev: uint64,
   size: int64,
-  blksize: int64,
-  blocks: int64,
-  atime: float64,
-  mtime: float64,
-  ctime: float64,
+  atime: int64,
+  mtime: int64,
+  ctime: int64,
+  blksize: int64, -- not available in Windows
+  blocks: int64, -- not available in Windows
 }
 
-local function result_from_errno(ok: boolean): (boolean, string, integer) <inline>
+local function result_from_errno(ok: boolean): (boolean, string, integer)
   if not ok then
-    return false, strerror(errno), errno
+    return false, C.strerror(C.errno), C.errno
   end
   return true, (@string){}, 0
 end
 
-local function seconds_from_timespec(ts: C.timespec): float64 <inline>
-  return ts.tv_sec + (ts.tv_nsec / 1000000000_f64)
+local function kind_from_mode(mode: cuint): fs.StatKind
+  if S_ISREG(mode) then
+    return fs.StatKind.FILE
+  elseif S_ISDIR(mode) then
+    return fs.StatKind.DIRECTORY
+  elseif S_ISLNK(mode) then
+    return fs.StatKind.LINK
+  elseif S_ISSOCK(mode) then
+    return fs.StatKind.SOCKET
+  elseif S_ISFIFO(mode) then
+    return fs.StatKind.PIPE
+  elseif S_ISCHR(mode) then
+    return fs.StatKind.CHARACTER
+  elseif S_ISBLK(mode) then
+    return fs.StatKind.BLOCK
+  end
+  return fs.StatKind.OTHER
 end
 
-local function kind_from_mode(mode: cuint): fs.Kind <inline>
-  if S_ISREG(mode) then
-    return fs.Kind.FILE
-  elseif S_ISDIR(mode) then
-    return fs.Kind.DIRECTORY
-  elseif S_ISLNK(mode) then
-    return fs.Kind.LINK
-  elseif S_ISSOCK(mode) then
-    return fs.Kind.SOCKET
-  elseif S_ISFIFO(mode) then
-    return fs.Kind.PIPE
-  elseif S_ISCHR(mode) then
-    return fs.Kind.CHARACTER
-  elseif S_ISBLK(mode) then
-    return fs.Kind.BLOCK
-  end
-  return fs.Kind.OTHER
+-- Checks if a directory exists.
+function fs.isdir(path: string): boolean
+  local st: stat_t
+  return stat(path, &st) == 0 and S_ISDIR(st.st_mode)
+end
+
+-- Checks if a file exists.
+function fs.isfile(path: string): boolean
+  local st: stat_t
+  return stat(path, &st) == 0 and not S_ISDIR(st.st_mode)
 end
 
 -- Returns the current working directory.
 function fs.cwdir(): (string, string, integer)
-  local MAX_PATH_SIZE <comptime> = 4096
   local buf: [MAX_PATH_SIZE]cchar
   if getcwd(&buf, #buf) == nilptr then
-    return (@string){}, strerror(errno), errno
+    return (@string){}, C.strerror(C.errno), C.errno
   end
   return string.copy(&buf), (@string){}, 0
 end
@@ -128,9 +219,28 @@ function fs.chdir(path: string): (boolean, string, integer)
   return result_from_errno(chdir(path) == 0)
 end
 
+-- Changes permissions of a file.
+function fs.chmod(path: string, mode: uint32): (boolean, string, integer)
+  return result_from_errno(chmod(path, mode) == 0)
+end
+
+-- Changes ownership of a file.
+function fs.chown(path: string, uid: uint32, gid: uint32): (boolean, string, integer)
+  ## if ccinfo.is_windows then
+  return false, 'not implemented yet', -1
+  ## else
+  return result_from_errno(chown(path, uid, gid) == 0)
+  ## end
+end
+
 -- Creates a directory.
 function fs.mkdir(path: string): (boolean, string, integer)
-  return result_from_errno(mkdir(path, 0755) == 0)
+  ## if ccinfo.is_windows then
+  return result_from_errno(mkdir(path) == 0)
+  ## else
+  local mode: cuint = S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IWGRP|S_IXGRP|S_IROTH|S_IXOTH
+  return result_from_errno(mkdir(path, mode) == 0)
+  ## end
 end
 
 --[[
@@ -139,16 +249,41 @@ If `contents` is not present then an empty is created.
 If the file exists, it will be overwritten.
 ]]
 function fs.mkfile(path: string, contents: facultative(string)): (boolean, string, integer)
-  local fp: *FILE = fopen(path, 'wb')
+  local fp: *C.FILE = C.fopen(path, 'wb')
   if not fp then
     return result_from_errno(false)
   end
   ## if not contents.type.is_niltype then
-  if contents.size > 0 and fwrite(contents.data, 1, contents.size, fp) <= 0 then
+  if contents.size > 0 and C.fwrite(contents.data, 1, contents.size, fp) <= 0 then
+    C.fclose(fp)
     return result_from_errno(false)
   end
   ## end
-  return result_from_errno(fclose(fp) == 0)
+  return result_from_errno(C.fclose(fp) == 0)
+end
+
+--[[
+Creates a link for object `oldpath` at `newpath`.
+By default symbolic links are created, unless `hardlink` is true.
+]]
+function fs.mklink(oldpath: string, newpath: string, hard: facultative(boolean)): (boolean, string, integer)
+  ## if not hard.is_niltype then
+  local hard: boolean = false
+  ## end
+  ## if ccinfo.is_windows then
+  local res: cint
+  if hard then
+    res = CreateSymbolicLinkA(newpath, oldpath, fs.isdir(oldpath) and 1 or 0)
+  else
+    res = CreateHardLinkA(newpath, oldpath, nilptr)
+  end
+  if res == 0 then
+    return false, 'windows error', GetLastError()
+  end
+  return true, (@string){}, 0
+  ## else
+  return result_from_errno((hard and link(oldpath, newpath) or symlink(oldpath, newpath)) == 0)
+  ## end
 end
 
 -- Removes a directory.
@@ -158,24 +293,43 @@ end
 
 -- Removes a file.
 function fs.rmfile(path: string): (boolean, string, integer)
-  return result_from_errno(remove(path) == 0)
+  return result_from_errno(unlink(path) == 0)
 end
 
 -- Moves a file or directory.
 function fs.move(oldpath: string, newpath: string): (boolean, string, integer)
-  return result_from_errno(rename(oldpath, newpath) == 0)
+  return result_from_errno(C.rename(oldpath, newpath) == 0)
 end
 
--- Update access and modification time of a file.
+-- Updates access and modification time of a file.
 function fs.touch(path: string): (boolean, string, integer)
   return result_from_errno(utime(path, nilptr) == 0)
 end
 
--- Get file status information.
-function fs.stat(path: string): (fs.StatInfo, string, integer)
+-- Gets file status information.
+function fs.stat(path: string, linkstat: facultative(boolean)): (fs.StatInfo, string, integer)
+  ## if linkstat.type.is_niltype then
+  local linkstat: boolean = false
+  ## end
   local st: stat_t
-  if stat(path, &st) ~= 0 then
-    return (@fs.StatInfo){}, strerror(errno), errno
+  local res: cint
+  if linkstat then
+    ## if ccinfo.is_windows then
+    local win32buffer: WIN32_FILE_ATTRIBUTE_DATA
+    if GetFileAttributesEx(path, GetFileExInfoStandard, &win32buffer) ~= 0 and
+        win32buffer.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ~= 0 then
+      st.st_mode = _S_IFLNK
+    else
+      res = stat(path, &st)
+    end
+    ## else
+    res = lstat(path, &st)
+    ## end
+  else
+    res = stat(path, &st)
+  end
+  if res ~= 0 then
+    return (@fs.StatInfo){}, C.strerror(C.errno), C.errno
   end
   local si: fs.StatInfo = {
     kind = kind_from_mode(st.st_mode),
@@ -187,78 +341,69 @@ function fs.stat(path: string): (fs.StatInfo, string, integer)
     gid = st.st_gid,
     rdev = st.st_rdev,
     size = st.st_size,
-    blksize = st.st_blksize,
-    blocks = st.st_blocks,
-    atime = seconds_from_timespec(st.st_atim),
-    mtime = seconds_from_timespec(st.st_mtim),
-    ctime = seconds_from_timespec(st.st_ctim),
+    atime = st.st_atime,
+    mtime = st.st_mtime,
+    ctime = st.st_ctime,
   }
+  ## if not ccinfo.is_windows then
+  si.blksize = st.st_blksize
+  si.blocks = st.st_blocks
+  ## end
   return si, (@string){}, 0
 end
 
--- Checks if a file exists.
-function fs.isfile(path: string): boolean
-  local st: stat_t
-  return stat(path, &st) == 0 and not S_ISDIR(st.st_mode)
-end
-
--- Checks if a directory exists.
-function fs.isdir(path: string): boolean
-  local st: stat_t
-  return stat(path, &st) == 0 and S_ISDIR(st.st_mode)
-end
-
--- Read all contents from a file.
+-- Reads all contents from a file.
 function fs.readfile(path: string): (string, string, integer)
-  local fp: *FILE = fopen(path, 'rb')
+  local fp: *C.FILE = C.fopen(path, 'rb')
   if not fp then
-    return (@string){}, strerror(errno), errno
+    return (@string){}, C.strerror(C.errno), C.errno
   end
-  local READ_CHUNK_SIZE <comptime> = 1024
+  defer C.fclose(fp) end
+  local READ_CHUNK_SIZE <comptime> = 4096
   local sb: stringbuilder
   repeat -- read in chunks
     local p: span(byte) = sb:prepare(READ_CHUNK_SIZE)
     if p:empty() then
       return (@string){}, 'out of buffer memory', -1
     end
-    local nr: csize = fread(p.data, 1, READ_CHUNK_SIZE, fp)
+    local nr: csize = C.fread(p.data, 1, READ_CHUNK_SIZE, fp)
     sb:commit(nr)
   until nr < READ_CHUNK_SIZE
-  if ferror(fp) ~= 0 then
-    return (@string){}, strerror(errno), errno
+  local goterr = C.ferror(fp) ~= 0
+  if C.ferror(fp) ~= 0 then
+    return (@string){}, C.strerror(C.errno), C.errno
   end
   return sb:promote(), (@string){}, 0
 end
 
--- TODO:
--- cpfile
--- chmod
--- chown
--- mklink
--- readlink
--- walkdir
-
-## if TEST then
-local pwd = fs.cwdir()
-local newdir <close> = pwd..'/tempdir'
-local newdir2 <close> = pwd..'/tempdir2'
-assert(fs.chdir(pwd))
-assert(fs.mkdir(newdir))
-assert(fs.isdir(newdir))
-assert(fs.move(newdir, newdir2))
-assert(fs.rmdir(newdir2))
-
-if true then
-  assert(fs.mkfile('tmpfile'))
-  local si = fs.stat('tmpfile')
-  assert(si.kind == fs.Kind.FILE and si.size == 0)
-  assert(fs.isfile('tmpfile'))
-  assert(fs.touch('tmpfile'))
-  assert(fs.move('tmpfile', 'tmpfile2'))
-  assert(fs.rmfile('tmpfile2'))
-
-  assert(fs.mkfile('tmpfile', 'hello!'))
-  assert(fs.readfile('tmpfile') == 'hello!')
-  assert(fs.rmfile('tmpfile'))
+-- Reads value from a symbolic link file.
+function fs.readlink(path: string): (string, string, integer)
+  local buf: [MAX_PATH_SIZE+1]cchar
+  ## if ccinfo.is_windows then
+  local h: pointer = CreateFileA(path, GENERIC_READ,
+                                 FILE_SHARE_READ | FILE_SHARE_WRITE, nilptr,
+                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nilptr);
+  if h == INVALID_HANDLE_VALUE then
+    return (@string){}, 'windows error', GetLastError()
+  end
+  defer CloseHandle(h) end
+  local len = GetFinalPathNameByHandleA(h, &buf, #buf, FILE_NAME_OPENED)
+  ## else
+  local len: cptrdiff = readlink(path, &buf, #buf)
+  ## end
+  if len < 0 then
+    return (@string){}, C.strerror(C.errno), C.errno
+  end
+  if len == #buf then
+    return (@string){}, 'buffer truncated', -1
+  end
+  return string{data=&buf,size=len}:copy(), (@string){}, 0
 end
-## end
+
+--[[
+TODO:
+* lock/unlock file APIs
+* use string representation for file modes?
+* `walkdir` iterator to walk over all entries from a directory
+* `cpfile` to copy a file
+]]
