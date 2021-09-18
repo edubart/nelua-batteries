@@ -2,6 +2,11 @@
 File system module.
 
 Contains various utilities to manages files, directories and links.
+
+Most functions from this library returns 3 values:
+* First is the operation result, which may be false or empty in case the operation failed.
+* Second is an error message, in case the operation failed.
+* Third is a system dependent error code, which is zero when the operation succeeds.
 ]]
 
 require 'string'
@@ -131,6 +136,7 @@ local function utime(file: cstring, times: *utimbuf): cint <cimport,cinclude'<ut
 ## end
 local MAX_PATH_SIZE <comptime> = 4096
 
+-- The file system namespace.
 global fs = @record{}
 
 -- Character separator for directories.

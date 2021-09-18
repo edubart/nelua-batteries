@@ -1,5 +1,14 @@
+--[[
+Backtrace module.
+
+This modules provides utilities to get trace backs of the call stack
+at runtime, this may be used to raise runtime errors with
+some call context information, useful for debugging.
+]]
+
 ## linklib 'backtrace'
 
+-- The backtrace class.
 global Backtrace <forwarddecl> = @record{}
 
 --[[
@@ -210,4 +219,6 @@ end
 
 -- Initialize a global backtrace instance.
 local argv: *[0]cstring <cimport'nelua_argv',nodecl>
+
+-- The global backtrace instance.
 global backtrace: *Backtrace = Backtrace.create(argv[0], 0, backtrace_create_error_callback, nilptr)

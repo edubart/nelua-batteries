@@ -17,6 +17,6 @@ but also a wrapper to make it easier to use it with Nelua.
 
 # List of libraries
 
-* `backtrace` - Provides a way to get tracebacks at runtime, using the popular [libbacktrace](https://github.com/ianlancetaylor/libbacktrace) library.
+* `backtrace` - Provides a way to get trace backs at runtime, using the popular [libbacktrace](https://github.com/ianlancetaylor/libbacktrace) library.
 * `ffi` - Cross platform FFI for Nelua, you can use it to load symbols from shared libraries.
 * `fs` - Cross platform file system library, you can use manage files and directories.
