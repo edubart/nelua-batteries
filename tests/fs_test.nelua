@@ -6,6 +6,7 @@ fs.rmdir('tempdir2')
 fs.rmfile('tempfile')
 fs.rmfile('tempfile2')
 fs.rmfile('tempfile3')
+fs.rmfile('tempfile4')
 
 local pwd: string <close> = fs.cwdir()
 local newdir: string <close> = string.format('%s%s%s', pwd, fs.sep, 'tempdir')
@@ -14,7 +15,6 @@ assert(fs.chdir(pwd))
 assert(fs.mkdir(newdir))
 assert(fs.chdir(newdir))
 local newpwd: string <close> = fs.cwdir()
-print(newpwd, newdir)
 assert(newpwd == newdir)
 assert(fs.chdir(pwd))
 assert(fs.isdir(newdir))
@@ -59,7 +59,12 @@ end
 ## if not ccinfo.is_windows then
   assert(fs.chown('tmpfile', si.uid, si.gid))
 ## end
+do -- copy file
+  fs.cpfile('tmpfile', 'tmpfile4')
+  local contents: string <close> = fs.readfile('tmpfile4')
+  assert(contents == 'hello!')
+  assert(fs.rmfile('tmpfile4'))
+end
 assert(fs.chmod('tmpfile', si.mode))
 assert(fs.rmfile('tmpfile'))
-
 print 'fs OK!'
