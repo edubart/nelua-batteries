@@ -1,0 +1,338 @@
+--[[
+Nester is a minimal unit testing framework for Nelua with a focus on being simple to use.
+]]
+
+require 'io'
+require 'os'
+require 'vector'
+require 'coroutine'
+
+-- Called on test errors.
+local function raise(msg: string, filename: string, lineno: integer)
+  local co: coroutine, ismain: boolean = coroutine.running()
+  assert(not ismain,  'you can only raise Nester errors from inside an it block')
+  coroutine.push(co, msg, filename, lineno)
+  coroutine.yield()
+end
+
+-- Called when trying to run a test.
+local function try(func: auto): (boolean, string, string, integer)
+  local co: coroutine = coroutine.spawn(func)
+  if co:status() == 'dead' then -- success
+    coroutine.destroy(co)
+    return true, (@string){}, (@string){}, 0
+  else -- failed
+    local err: string
+    local filename: string
+    local lineno: integer
+    coroutine.pop(co, &err, &filename, &lineno)
+    return false, err, filename, lineno
+  end
+end
+
+-- Returns whether the terminal supports UTF-8 characters.
+local function is_utf8term(): boolean
+  local lang: string <close> = os.getenv('LANG')
+  return lang:find('[uU][tT][fF]%-?8$') > 0
+end
+
+-- Returns whether a system environment variable is "true".
+local function getboolenv(varname: string, default: boolean): boolean
+  local val: string <close> = os.getenv(varname)
+  if val == 'true' then
+    return true
+  elseif val == 'false' then
+    return false
+  end
+  return default
+end
+
+-- Returns the concatenation of all strings from `v` separated by `sep`.
+local function concat_strings(v: vector(string), sep: string)
+  local sb: stringbuilder
+  for i:integer=0,<#v-1 do
+    sb:write(v[i], sep)
+  end
+  if #v > 0 then
+    sb:write(v[#v-1])
+  end
+  return sb:promote()
+end
+
+-- The nester module.
+global nester: type = @record{}
+-- Whether lines of passed tests should not be printed. False by default.
+global nester.quiet: boolean = getboolenv('NESTER_QUIET', false)
+-- Whether the output should be colorized. True by default.
+global nester.colored: boolean = getboolenv('NESTER_COLORED', true)
+-- Whether the error description of a test failure should be shown. True by default.
+global nester.show_error: boolean = getboolenv('NESTER_SHOW_ERROR', true)
+-- Whether test suite should exit on first test failure. False by default.
+global nester.stop_on_fail: boolean = getboolenv('NESTER_STOP_ON_FAIL', false)
+-- Whether we can print UTF-8 characters to the terminal. True by default when supported.
+global nester.utf8term: boolean = getboolenv('NESTER_UTF8TERM', is_utf8term())
+-- A string with a Lua pattern to filter tests. Empty by default.
+global nester.filter: string <close> = os.getenv('NESTER_FILTER')
+-- Function to retrieve time in seconds with milliseconds precision, `os.now` by default.
+global nester.seconds: auto = os.now
+
+-- Variables used internally for the nester state.
+local nester_start: number = 0
+local has_started: boolean = false
+local last_succeeded: boolean = false
+local level: integer = 0
+local successes: integer = 0
+local total_successes: integer = 0
+local failures: integer = 0
+local total_failures: integer = 0
+local start: number = 0
+local befores: vector(vector(function(name: string))) <close>
+local afters: vector(vector(function(name: string))) <close>
+local names: vector(string) <close>
+
+-- Color codes.
+local Color = @enum{
+  Reset = 0,
+  Bright,
+  Red,
+  Green,
+  Blue,
+  Magenta,
+}
+
+-- Helper to translate a color code into a terminal color code.
+local function color(key: Color): string
+  if nester.colored then
+    switch key do
+      case Color.Reset then return '\27[0m'
+      case Color.Bright then return '\27[1m'
+      case Color.Red then return '\27[31m'
+      case Color.Green then return '\27[32m'
+      case Color.Blue then return '\27[34m'
+      case Color.Magenta then return '\27[35m'
+    end
+  end
+  return ''
+end
+
+-- Exit the application with success code if all tests passed, or failure code otherwise.
+function nester.exit(): void
+  os.exit(total_failures == 0)
+end
+
+--[[
+Describe a block of tests, which consists in a set of tests.
+Describes can be nested.
+`name` is a string used to describe the block.
+`func` a function containing all the tests or other describes.
+]]
+function nester.describe(name: string, func: function()): void
+  if level == 0 then -- get start time for top level describe blocks
+    start = nester.seconds()
+    if not has_started then
+      nester_start = start
+    end
+  end
+  -- setup describe block variables
+  failures = 0
+  successes = 0
+  level = level + 1
+  names:push(name)
+  befores:push{}
+  afters:push{}
+  -- run the describe block
+  func()
+  -- cleanup describe block
+  afters:pop()
+  befores:pop()
+  names:pop()
+  level = level - 1
+  -- pretty print statistics for top level describe block
+  if level == 0 and not nester.quiet and (successes > 0 or failures > 0) then
+    io.write(failures == 0 and color(Color.Green) or color(Color.Red), '[====] ',
+             color(Color.Magenta), name, color(Color.Reset), ' | ',
+             color(Color.Green), successes, color(Color.Reset), ' successes / ')
+    if failures > 0 then
+      io.write(color(Color.Red), failures, color(Color.Reset), ' failures / ')
+    end
+    io.write(color(Color.Bright))
+    io.writef('%.6f', nester.seconds() - start)
+    io.write(color(Color.Reset), ' seconds\n')
+  end
+end
+
+-- Pretty print the line on the test file where an error happened.
+local function show_error_line(filename: string, lineno: integer): void
+  io.write(' (', color(Color.Blue), filename, color(Color.Reset),
+           ':', color(Color.Bright), lineno, color(Color.Reset), ')')
+end
+
+-- Pretty print the test name, with breadcrumb for the describe blocks.
+local function show_test_name(name: string): void
+  for _,descname in ipairs(names) do
+    io.write(color(Color.Magenta), descname, color(Color.Reset), ' | ')
+  end
+  io.write(color(Color.Bright), name, color(Color.Reset))
+end
+
+local function nester_it(name: string, func: function(), filename: string, lineno: integer): void
+  -- skip the test if it does not match the filter
+  if #nester.filter > 0 then
+    local fullname: string <close> = concat_strings(names, ' | ')
+    if not fullname:match(nester.filter) then
+      return
+    end
+  end
+  -- execute before handlers.
+  for _,levelbefores in ipairs(befores) do
+    for _,beforefn in ipairs(levelbefores) do
+      beforefn(name)
+    end
+  end
+  -- run the test, capturing errors if any
+  local success: boolean, err: string, errfilename: string, errlineno: integer = try(func)
+  -- count successes and failures
+  if success then
+    successes = successes + 1
+    total_successes = total_successes + 1
+  else
+    failures = failures + 1
+    total_failures = total_failures + 1
+  end
+  -- print the test run.
+  if not nester.quiet then -- show test status and complete test name
+    if success then
+      io.write(color(Color.Green), '[PASS] ', color(Color.Reset))
+    else
+      io.write(color(Color.Red), '[FAIL] ', color(Color.Reset))
+    end
+    show_test_name(name)
+    if not success then
+      show_error_line(filename, lineno)
+    end
+    io.write('\n')
+  else
+    if success then -- show just a character hinting that the test succeeded
+      local o: string = (nester.utf8term and nester.colored) and '\226\151\143' or 'o'
+      io.write(color(Color.Green), o, color(Color.Reset))
+    else -- show complete test name on failure
+      io.write(last_succeeded and '\n' or '', color(Color.Red), '[FAIL] ', color(Color.Reset))
+      show_test_name(name)
+      show_error_line(filename, lineno)
+      io.write('\n')
+    end
+  end
+  if not success and #err > 0 and nester.show_error then
+    if #errfilename > 0 and errlineno > 0 then
+      io.write(color(Color.Blue), errfilename, color(Color.Reset),
+               ':', color(Color.Bright), errlineno, color(Color.Reset), ': ')
+    end
+    io.write(err, '\n\n')
+  end
+  io.flush()
+  -- stop on failure
+  if not success and nester.stop_on_fail then
+    if nester.quiet then
+      io.write('\n')
+      io.flush()
+    end
+    nester.exit()
+  end
+  -- execute after handlers
+  for _,levelafters in ipairs(afters) do
+    for _,afterfn in ipairs(levelafters) do
+      afterfn(name)
+    end
+  end
+  last_succeeded = success
+end
+
+--[[
+Declare a test, which consists of a set of assertions.
+Where `name` is the test name,
+and `func` is the function containing all assertions.
+]]
+function nester.it(name: string, func: function()): void <polymorphic,alwayseval>
+  ## local loc = polysrcnode:location()
+  nester_it(name, func, #[loc.srcname or '']#, #[loc.lineno or 0]#)
+end
+
+--[[
+Set a function that is called before every test inside a describe block.
+A single string containing the name of the test about to be run will be passed to `func`.
+]]
+function nester.before(func: function(string)): void
+  befores[level]:push(func)
+end
+
+--[[
+Set a function that is called after every test inside a describe block.
+A single string containing the name of the test that was finished will be passed to `func`.
+The function is executed independently if the test passed or failed.
+]]
+function nester.after(func: function(string)): void
+  afters[level]:push(func)
+end
+
+--[[
+Pretty print statistics of all test runs.
+With total success, total failures and run time in seconds.
+]]
+function nester.report(): boolean
+  local now: number = nester.seconds()
+  io.write(nester.quiet and '\n' or '',
+           color(Color.Green), total_successes, color(Color.Reset), ' successes / ',
+           color(Color.Red), total_failures, color(Color.Reset), ' failures / ',
+           color(Color.Bright))
+  io.writef('%.6f seconds', now - (nester_start or now))
+  io.write(color(Color.Reset), '\n')
+  io.flush()
+  return total_failures == 0
+end
+
+-- Expect module, containing utility function for doing assertions inside a test.
+global expect: type = @record{}
+
+function expect.equal(a: auto, b: auto): void <polymorphic,alwayseval>
+  ## local loc = polysrcnode:location()
+  if not (a == b) then
+    raise(string.format('expected value be equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
+      #[loc.srcname or '']#, #[loc.lineno or 0]#)
+  end
+end
+
+function expect.not_equal(a: auto, b: auto): void <polymorphic,alwayseval>
+  ## local loc = polysrcnode:location()
+  if a == b then
+    raise(string.format('expected values to be not equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
+      #[loc.srcname or '']#, #[loc.lineno or 0]#)
+  end
+end
+
+function expect.truthy(v: boolean): void <polymorphic,alwayseval>
+  ## local loc = polysrcnode:location()
+  if not v then
+    raise('expected expression to be true, but got false\n',
+      #[loc.srcname or '']#, #[loc.lineno or 0]#)
+  end
+end
+
+function expect.falsy(v: boolean): void <polymorphic,alwayseval>
+  ## local loc = polysrcnode:location()
+  if v then
+    raise('expected expression to be true, but got true\n',
+      #[loc.srcname or '']#, #[loc.lineno or 0]#)
+  end
+end
+
+function expect.error(msg: facultative(string)): void <polymorphic,alwayseval>
+  ## local loc = polysrcnode:location()
+  raise(msg, #[loc.srcname or '']#, #[loc.lineno or 0]#)
+end
+
+function expect.assert(v: boolean, msg: string): void <polymorphic,alwayseval>
+  ## local loc = polysrcnode:location()
+  if not v then
+    raise(msg, #[loc.srcname or '']#, #[loc.lineno or 0]#)
+  end
+end

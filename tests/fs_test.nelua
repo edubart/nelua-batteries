@@ -1,70 +1,87 @@
+require 'nester'
 require 'fs'
 
--- Remove temporary test files
-fs.rmdir('tempdir')
-fs.rmdir('tempdir2')
-fs.rmfile('tempfile')
-fs.rmfile('tempfile2')
-fs.rmfile('tempfile3')
-fs.rmfile('tempfile4')
+nester.describe("fs", function()
+  -- Remove temporary test files
+  fs.rmdir('tempdir')
+  fs.rmdir('tempdir2')
+  fs.rmfile('tempfile')
+  fs.rmfile('tempfile2')
+  fs.rmfile('tempfile3')
+  fs.rmfile('tempfile4')
 
-local pwd: string <close> = fs.cwdir()
-local newdir: string <close> = string.format('%s%s%s', pwd, fs.sep, 'tempdir')
-local newdir2: string <close> = string.format('%s%s%s', pwd, fs.sep, 'tempdir2')
-assert(fs.chdir(pwd))
-assert(fs.mkdir(newdir))
-assert(fs.chdir(newdir))
-local newpwd: string <close> = fs.cwdir()
-assert(newpwd == newdir)
-assert(fs.chdir(pwd))
-assert(fs.isdir(newdir))
-assert(fs.move(newdir, newdir2))
-assert(fs.rmdir(newdir2))
+  nester.it("cwdir, mkdir, isdir, move, rmdir", function()
+    local pwd: string <close> = fs.cwdir()
+    local newdir: string <close> = string.format('%s%s%s', pwd, fs.sep, 'tempdir')
+    local newdir2: string <close> = string.format('%s%s%s', pwd, fs.sep, 'tempdir2')
+    expect.truthy(fs.chdir(pwd))
+    expect.truthy(fs.mkdir(newdir))
+    expect.truthy(fs.chdir(newdir))
+    local newpwd: string <close> = fs.cwdir()
+    expect.truthy(newpwd == newdir)
+    expect.truthy(fs.chdir(pwd))
+    expect.truthy(fs.isdir(newdir))
+    expect.truthy(fs.move(newdir, newdir2))
+    expect.truthy(fs.rmdir(newdir2))
+  end)
 
-assert(fs.mkfile('tmpfile'))
-local si: fs.StatInfo = fs.stat('tmpfile')
-assert(si.kind == fs.StatKind.FILE and si.size == 0)
-assert(fs.isfile('tmpfile'))
-assert(fs.touch('tmpfile'))
-assert(fs.move('tmpfile', 'tmpfile2'))
-assert(fs.rmfile('tmpfile2'))
+  nester.it("mkfile, isfile, touch, move, rmfile", function()
+    expect.truthy(fs.mkfile('tmpfile'))
+    expect.truthy(fs.isfile('tmpfile'))
+    expect.truthy(fs.touch('tmpfile'))
+    expect.truthy(fs.move('tmpfile', 'tmpfile2'))
+    expect.truthy(fs.rmfile('tmpfile2'))
+  end)
 
-assert(fs.mkfile('tmpfile', 'hello!'))
-local contents: string <close> = fs.readfile('tmpfile')
-assert(contents == 'hello!')
-do -- symbolic link
-  assert(fs.mklink('tmpfile', 'tmpfile2'))
-  assert(fs.stat('tmpfile2').kind == fs.StatKind.FILE)
-  ## if not ccinfo.is_windows then
-  assert(fs.stat('tmpfile2', true).kind == fs.StatKind.LINK)
-  ## end
-  local contents: string <close> = fs.readfile('tmpfile2')
-  assert(contents == 'hello!')
-  local linktarget: string <close> = fs.readlink('tmpfile2')
-  ## if not ccinfo.is_windows then
-  assert(linktarget == 'tmpfile')
-  ## end
-  assert(fs.rmfile('tmpfile2'))
-end
-do -- hard link
-  assert(fs.mklink('tmpfile', 'tmpfile3', true))
-  local contents: string <close> = fs.readfile('tmpfile3')
-  assert(contents == 'hello!')
-  assert(fs.stat('tmpfile3').kind == fs.StatKind.FILE)
-  ## if not ccinfo.is_windows then
-  assert(fs.stat('tmpfile3', true).kind == fs.StatKind.LINK)
-  ## end
-  assert(fs.rmfile('tmpfile3'))
-end
-## if not ccinfo.is_windows then
-  assert(fs.chown('tmpfile', si.uid, si.gid))
-## end
-do -- copy file
-  fs.cpfile('tmpfile', 'tmpfile4')
-  local contents: string <close> = fs.readfile('tmpfile4')
-  assert(contents == 'hello!')
-  assert(fs.rmfile('tmpfile4'))
-end
-assert(fs.chmod('tmpfile', si.mode))
-assert(fs.rmfile('tmpfile'))
-print 'fs OK!'
+  expect.truthy(fs.mkfile('tmpfile', 'hello!'))
+  local contents: string <close> = fs.readfile('tmpfile')
+  expect.truthy(contents == 'hello!')
+
+  nester.it("stat", function()
+    local si: fs.StatInfo = fs.stat('tmpfile')
+    expect.truthy(si.kind == fs.StatKind.FILE and si.size > 0)
+  end)
+
+  nester.it("symbolic link", function()
+    expect.truthy(fs.mklink('tmpfile', 'tmpfile2'))
+    expect.truthy(fs.stat('tmpfile2').kind == fs.StatKind.FILE)
+    ## if not ccinfo.is_windows then
+    expect.truthy(fs.stat('tmpfile2', true).kind == fs.StatKind.LINK)
+    ## end
+    local contents: string <close> = fs.readfile('tmpfile2')
+    expect.truthy(contents == 'hello!')
+    local linktarget: string <close> = fs.readlink('tmpfile2')
+    ## if not ccinfo.is_windows then
+    expect.truthy(linktarget == 'tmpfile')
+    ## end
+    expect.truthy(fs.rmfile('tmpfile2'))
+  end)
+
+  nester.it("hard link", function()
+    expect.truthy(fs.mklink('tmpfile', 'tmpfile3', true))
+    local contents: string <close> = fs.readfile('tmpfile3')
+    expect.truthy(contents == 'hello!')
+    expect.truthy(fs.stat('tmpfile3').kind == fs.StatKind.FILE)
+    ## if not ccinfo.is_windows then
+    expect.truthy(fs.stat('tmpfile3', true).kind == fs.StatKind.LINK)
+    ## end
+    expect.truthy(fs.rmfile('tmpfile3'))
+  end)
+
+  nester.it("chown, chmod", function()
+    ## if not ccinfo.is_windows then
+      local si: fs.StatInfo = fs.stat('tmpfile')
+      expect.truthy(fs.chown('tmpfile', si.uid, si.gid))
+    ## end
+    expect.truthy(fs.chmod('tmpfile', si.mode))
+  end)
+
+  nester.it("cpfile", function()
+    fs.cpfile('tmpfile', 'tmpfile4')
+    local contents: string <close> = fs.readfile('tmpfile4')
+    expect.truthy(contents == 'hello!')
+    expect.truthy(fs.rmfile('tmpfile4'))
+  end)
+
+  expect.truthy(fs.rmfile('tmpfile'))
+end)
