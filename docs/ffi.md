@@ -1,4 +1,4 @@
-## fs
+## FFI module
 
 Cross platform foreign function interface (FFI) module.
 This library can be used to load/unload shared libraries and symbols from it.

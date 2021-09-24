@@ -1,0 +1,23 @@
+require 'nester'
+
+-- Customize nester configuration.
+nester.stop_on_fail = false
+
+nester.describe('nester', function()
+  nester.before(function(name: string)
+    -- This function is run before every test.
+  end)
+
+  nester.describe('module1', function() -- Describe blocks can be nested.
+    nester.it('feature1', function()
+      expect.equal('something', 'something') -- Pass.
+    end)
+
+    nester.it('feature2', function()
+      expect.error('TEST FAILED, BUT THIS IS EXPECTED') -- Fail.
+    end)
+  end)
+end)
+
+nester.report() -- Print overall statistic of the tests run.
+-- nester.exit() -- Exit with success if all tests passed.

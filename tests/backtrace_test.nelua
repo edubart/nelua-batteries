@@ -1,12 +1,19 @@
+require 'nester'
 require 'backtrace'
 
-local function foo()
-  local message = backtrace:traceback('hi')
-  print(message)
+local function foo(): string
+  return backtrace:traceback('hi')
 end
 
-local function boo()
-  foo()
+local function boo(): string
+  return foo()
 end
 
-boo()
+local bt: string = boo()
+
+nester.describe("backtrace", function()
+  nester.it("function traceback", function()
+    expect.truthy(bt:find('hi') == 1)
+  end)
+  print(bt)
+end)

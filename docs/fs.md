@@ -1,4 +1,4 @@
-## fs
+## File system module
 
 File system module.
 
@@ -196,5 +196,15 @@ function fs.readlink(path: string): (string, string, integer)
 ```
 
 Reads value from a symbolic link file.
+
+### fs.cpfile
+
+```nelua
+function fs.cpfile(oldpath: string, newpath: string): (boolean, string, integer)
+```
+
+Copies file from `oldpath` to `newpath`.
+If a file exists in `newpath`, it will be overwritten.
+File permissions are preserved.
 
 ---

@@ -1,3 +1,4 @@
+require 'nester'
 require 'ffi'
 
 ## if ccinfo.is_windows then
@@ -6,12 +7,21 @@ local libpath: cstring = "ffi_module.dll"
 local libpath: cstring = "./ffi_module.so"
 ## end
 
-local lib = ffi.load(libpath)
-assert(lib:isloaded() == true)
-local f42 = (@function(): cuint)(lib:get("f42"))
-assert(f42 ~= nilptr)
-assert(f42() == 42)
-assert(lib:unload() == true)
-assert(lib:unload() == false)
+local lib: ffi
+nester.describe("ffi", function()
+  nester.it("load", function()
+    lib = ffi.load(libpath)
+    expect.truthy(lib:isloaded())
+  end)
 
-print 'ffi OK!'
+  nester.it("get", function()
+    local f42 = (@function(): cuint)(lib:get("f42"))
+    expect.not_equal(f42, nilptr)
+    expect.equal(f42(), 42)
+  end)
+
+  nester.it("unload", function()
+    assert(lib:unload() == true)
+    assert(lib:unload() == false)
+  end)
+end)

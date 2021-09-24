@@ -1,14 +1,74 @@
 --[[
 Nester is a minimal unit testing framework for Nelua with a focus on being simple to use.
+
+## Features
+
+* Minimal, just one file.
+* Self contained, no external dependencies.
+* Simple and hackable when needed.
+* Use `describe` and `it` blocks to describe tests.
+* Supports `before` and `after` handlers.
+* Colored output.
+* Configurable via the script or with environment variables.
+* Quiet mode, to use in live development.
+* Optionally filter tests by name.
+* Show location of tests  errors.
+* Show time to complete tests.
+
+## Usage
+
+Copy `nester.nelua` file to a project and require it,
+and use it the following way:
+
+```lua
+require 'nester'
+
+-- Customize nester configuration.
+nester.stop_on_fail = false
+
+nester.describe('my project', function()
+  nester.before(function(name: string)
+    -- This function is run before every test.
+  end)
+
+  nester.describe('module1', function() -- Describe blocks can be nested.
+    nester.it('feature1', function()
+      expect.equal('something', 'something') -- Pass.
+    end)
+
+    nester.it('feature2', function()
+      expect.truthy(false) -- Fail.
+    end)
+  end)
+end)
+
+nester.report() -- Print overall statistic of the tests run.
+nester.exit() -- Exit with success if all tests passed.
+```
+
+## Customizing output with environment variables
+
+To customize the output of nester externally,
+you can set the following environment variables before running a test suite:
+
+* `NESTER_QUIET="true"`, omit print of passed tests.
+* `NESTER_COLORED="false"`, disable colored output.
+* `NESTER_SHOW_TRACEBACK="false"`, disable traceback on test failures.
+* `NESTER_SHOW_ERROR="false"`, omit print of error description of failed tests.
+* `NESTER_STOP_ON_FAIL="true"`, stop on first test failure.
+* `NESTER_UTF8TERM="false"`, disable printing of UTF-8 characters.
+* `NESTER_FILTER="some text"`, filter the tests that should be run.
+
+Note that these configurations can be changed via script too, check the documentation.
 ]]
 
 require 'io'
 require 'os'
-require 'vector'
+require 'sequence'
 require 'coroutine'
 
 -- Called on test errors.
-local function raise(msg: string, filename: string, lineno: integer)
+local function fail(msg: string, filename: string, lineno: integer): void
   local co: coroutine, ismain: boolean = coroutine.running()
   assert(not ismain,  'you can only raise Nester errors from inside an it block')
   coroutine.push(co, msg, filename, lineno)
@@ -48,7 +108,7 @@ local function getboolenv(varname: string, default: boolean): boolean
 end
 
 -- Returns the concatenation of all strings from `v` separated by `sep`.
-local function concat_strings(v: vector(string), sep: string)
+local function concat_strings(v: sequence(string), sep: string): string
   local sb: stringbuilder
   for i:integer=0,<#v-1 do
     sb:write(v[i], sep)
@@ -72,7 +132,7 @@ global nester.stop_on_fail: boolean = getboolenv('NESTER_STOP_ON_FAIL', false)
 -- Whether we can print UTF-8 characters to the terminal. True by default when supported.
 global nester.utf8term: boolean = getboolenv('NESTER_UTF8TERM', is_utf8term())
 -- A string with a Lua pattern to filter tests. Empty by default.
-global nester.filter: string <close> = os.getenv('NESTER_FILTER')
+global nester.filter: string = os.getenv('NESTER_FILTER')
 -- Function to retrieve time in seconds with milliseconds precision, `os.now` by default.
 global nester.seconds: auto = os.now
 
@@ -86,9 +146,9 @@ local total_successes: integer = 0
 local failures: integer = 0
 local total_failures: integer = 0
 local start: number = 0
-local befores: vector(vector(function(name: string))) <close>
-local afters: vector(vector(function(name: string))) <close>
-local names: vector(string) <close>
+local befores: sequence(sequence(function(name: string)))
+local afters: sequence(sequence(function(name: string)))
+local names: sequence(string)
 
 -- Color codes.
 local Color = @enum{
@@ -117,6 +177,11 @@ end
 
 -- Exit the application with success code if all tests passed, or failure code otherwise.
 function nester.exit(): void
+  -- cleanup before exit
+  befores:destroy()
+  afters:destroy()
+  names:destroy()
+  nester.filter:destroy()
   os.exit(total_failures == 0)
 end
 
@@ -178,8 +243,10 @@ end
 local function nester_it(name: string, func: function(), filename: string, lineno: integer): void
   -- skip the test if it does not match the filter
   if #nester.filter > 0 then
+    names:push(name)
     local fullname: string <close> = concat_strings(names, ' | ')
-    if not fullname:match(nester.filter) then
+    names:pop()
+    if fullname:find(nester.filter) == 0 then
       return
     end
   end
@@ -293,46 +360,55 @@ end
 -- Expect module, containing utility function for doing assertions inside a test.
 global expect: type = @record{}
 
+-- Checks if `a` is equals to `b`, if not raises a test error.
 function expect.equal(a: auto, b: auto): void <polymorphic,alwayseval>
   ## local loc = polysrcnode:location()
   if not (a == b) then
-    raise(string.format('expected value be equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
+    fail(string.format('expected value be equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
       #[loc.srcname or '']#, #[loc.lineno or 0]#)
   end
 end
 
+-- Checks if `a` is different from `b`, if not raises a test error.
 function expect.not_equal(a: auto, b: auto): void <polymorphic,alwayseval>
   ## local loc = polysrcnode:location()
   if a == b then
-    raise(string.format('expected values to be not equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
+    fail(string.format('expected values to be not equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
       #[loc.srcname or '']#, #[loc.lineno or 0]#)
   end
 end
 
+-- Checks if `v` is true, if not raises a test error.
 function expect.truthy(v: boolean): void <polymorphic,alwayseval>
   ## local loc = polysrcnode:location()
   if not v then
-    raise('expected expression to be true, but got false\n',
+    fail('expected expression to be true, but got false',
       #[loc.srcname or '']#, #[loc.lineno or 0]#)
   end
 end
 
+-- Checks if `v` is false, if not raises a test error.
 function expect.falsy(v: boolean): void <polymorphic,alwayseval>
   ## local loc = polysrcnode:location()
   if v then
-    raise('expected expression to be true, but got true\n',
+    fail('expected expression to be true, but got true',
       #[loc.srcname or '']#, #[loc.lineno or 0]#)
   end
 end
 
+-- Raises test error message `msg`.
 function expect.error(msg: facultative(string)): void <polymorphic,alwayseval>
   ## local loc = polysrcnode:location()
-  raise(msg, #[loc.srcname or '']#, #[loc.lineno or 0]#)
+  ## if msg.type.is_niltype then
+  local msg: string = 'error raised'
+  ## end
+  fail(msg, #[loc.srcname or '']#, #[loc.lineno or 0]#)
 end
 
-function expect.assert(v: boolean, msg: string): void <polymorphic,alwayseval>
+-- Raises test error message `msg` if `cond` is false.
+function expect.assert(cond: boolean, msg: string): void <polymorphic,alwayseval>
   ## local loc = polysrcnode:location()
   if not v then
-    raise(msg, #[loc.srcname or '']#, #[loc.lineno or 0]#)
+    fail(msg, #[loc.srcname or '']#, #[loc.lineno or 0]#)
   end
 end

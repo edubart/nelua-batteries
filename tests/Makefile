@@ -4,9 +4,10 @@ NFLAGS=--cc=$(CC) -L..
 NELUARUN=$(NELUA) $(NFLAGS)
 
 test: \
-	test-backtrace \
+	test-fs \
 	test-ffi \
-	test-fs
+	test-backtrace \
+	test-nester
 
 test-backtrace:
 	$(NELUARUN) backtrace_test.nelua
@@ -17,3 +18,6 @@ test-ffi:
 
 test-fs:
 	$(NELUARUN) fs_test.nelua
+
+test-nester:
+	$(NELUARUN) nester_test.nelua
