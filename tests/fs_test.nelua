@@ -2,7 +2,7 @@ require 'nester'
 require 'fs'
 
 nester.describe("fs", function()
-  -- Remove temporary test files
+  -- remove temporary test files
   fs.rmdir('tempdir')
   fs.rmdir('tempdir2')
   fs.rmfile('tempfile')
@@ -33,9 +33,11 @@ nester.describe("fs", function()
     expect.truthy(fs.rmfile('tmpfile2'))
   end)
 
-  expect.truthy(fs.mkfile('tmpfile', 'hello!'))
-  local contents: string <close> = fs.readfile('tmpfile')
-  expect.truthy(contents == 'hello!')
+  nester.it("mkfile, readfile", function()
+    expect.truthy(fs.mkfile('tmpfile', 'hello!'))
+    local contents: string <close> = fs.readfile('tmpfile')
+    expect.truthy(contents == 'hello!')
+  end)
 
   nester.it("stat", function()
     local si: fs.StatInfo = fs.stat('tmpfile')
@@ -83,5 +85,6 @@ nester.describe("fs", function()
     expect.truthy(fs.rmfile('tmpfile4'))
   end)
 
-  expect.truthy(fs.rmfile('tmpfile'))
+  -- remove remaining temporary test files
+  fs.rmfile('tmpfile')
 end)
