@@ -320,8 +320,8 @@ Where `name` is the test name,
 and `func` is the function containing all assertions.
 ]]
 function nester.it(name: string, func: function()): void <alwayspoly>
-  ## local loc = polysrcnode:location()
-  nester_it(name, func, #[loc.srcname or '']#, #[loc.lineno or 0]#)
+  ## local polysrcloc = polysrcloc
+  nester_it(name, func, #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
 end
 
 --[[
@@ -362,53 +362,53 @@ global expect: type = @record{}
 
 -- Checks if `a` is equals to `b`, if not raises a test error.
 function expect.equal(a: auto, b: auto): void <alwayspoly>
-  ## local loc = polysrcnode:location()
+  ## local polysrcloc = polysrcloc
   if not (a == b) then
     fail(string.format('expected value be equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
-      #[loc.srcname or '']#, #[loc.lineno or 0]#)
+      #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
   end
 end
 
 -- Checks if `a` is different from `b`, if not raises a test error.
 function expect.not_equal(a: auto, b: auto): void <alwayspoly>
-  ## local loc = polysrcnode:location()
+  ## local polysrcloc = polysrcloc
   if a == b then
     fail(string.format('expected values to be not equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
-      #[loc.srcname or '']#, #[loc.lineno or 0]#)
+      #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
   end
 end
 
 -- Checks if `v` is true, if not raises a test error.
 function expect.truthy(v: boolean): void <alwayspoly>
-  ## local loc = polysrcnode:location()
+  ## local polysrcloc = polysrcloc
   if not v then
     fail('expected expression to be true, but got false',
-      #[loc.srcname or '']#, #[loc.lineno or 0]#)
+      #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
   end
 end
 
 -- Checks if `v` is false, if not raises a test error.
 function expect.falsy(v: boolean): void <alwayspoly>
-  ## local loc = polysrcnode:location()
+  ## local polysrcloc = polysrcloc
   if v then
     fail('expected expression to be true, but got true',
-      #[loc.srcname or '']#, #[loc.lineno or 0]#)
+      #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
   end
 end
 
 -- Raises test error message `msg`.
 function expect.error(msg: facultative(string)): void <alwayspoly>
-  ## local loc = polysrcnode:location()
+  ## local polysrcloc = polysrcloc
   ## if msg.type.is_niltype then
   local msg: string = 'error raised'
   ## end
-  fail(msg, #[loc.srcname or '']#, #[loc.lineno or 0]#)
+  fail(msg, #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
 end
 
 -- Raises test error message `msg` if `cond` is false.
 function expect.assert(cond: boolean, msg: string): void <alwayspoly>
-  ## local loc = polysrcnode:location()
+  ## local polysrcloc = polysrcloc
   if not v then
-    fail(msg, #[loc.srcname or '']#, #[loc.lineno or 0]#)
+    fail(msg, #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
   end
 end
