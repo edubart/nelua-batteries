@@ -1,0 +1,94 @@
+require 'json'
+require 'vector'
+require 'nester'
+
+local Person = @record{name: string, age: integer}
+
+nester.describe("json", function()
+  nester.it("primitives", function()
+    local Foo: type = @record{
+      i: integer,
+      n: number,
+      s: string,
+      bt: boolean,
+      bf: boolean,
+      bn: boolean,
+    }
+    local primjson: string = [[{
+      "i": 1337,
+      "n": 0.5,
+      "s": "test",
+      "bt": true,
+      "bf": false,
+      "bn": null,
+    }]]
+    local foo: Foo, err: string, len: usize = json.parse(primjson, @Foo)
+    expect.truthy(foo.i == 1337)
+    expect.truthy(foo.n == 0.5)
+    expect.truthy(foo.s == "test")
+    expect.truthy(foo.bt == true)
+    expect.truthy(foo.bf == false)
+    expect.truthy(foo.bn == false)
+    expect.truthy(len == #primjson)
+    expect.truthy(#err == 0)
+  end)
+
+  nester.it("record", function()
+    local p: Person, err: string, len: usize = json.parse("{}", @Person)
+    expect.truthy(p.name == "" and p.age == 0 and #err == 0 and len == 2)
+    p, err = json.parse([[{"name":"John","age":20}]], @Person)
+    expect.truthy(p.name == 'John' and p.age == 20 and #err == 0)
+    p, err = json.parse([[{"name":"John"}]], @Person)
+    expect.truthy(p.name == 'John' and p.age == 00 and #err == 0)
+  end)
+
+  nester.it("vector", function()
+    local v: vector(integer), err: string, len: usize = json.parse("[]", @vector(integer))
+    expect.truthy(#v == 0 and #err == 0 and len == 2)
+    v, err = json.parse("[1]", @vector(integer))
+    expect.truthy(#v == 1 and v[0] == 1 and #err == 0)
+    v, err = json.parse("[1,2]", @vector(integer))
+    expect.truthy(#v == 2 and v[0] == 1 and v[1] == 2 and #err == 0)
+    v, err = json.parse("[1,2,3,]", @vector(integer))
+    expect.truthy(#v == 3 and v[0] == 1 and v[1] == 2 and v[2] == 3 and #err == 0)
+  end)
+
+  nester.it("vector with record", function()
+    local v: vector(Person) = expect.assert(json.parse([[ [
+      {"name": "John", "age": 20},
+      {"name": "Paul", "age": 21},
+    ] ]], @vector(Person)))
+    expect.truthy(#v == 2)
+    expect.truthy(v[0].name == 'John' and v[0].age == 20)
+    expect.truthy(v[1].name == 'Paul' and v[1].age == 21)
+  end)
+
+  nester.it("hashmap", function()
+    local m: hashmap(string, string) = expect.assert(json.parse([[{
+      "key1": "value1",
+      "key2": "value2",
+    }]], @hashmap(string, string)))
+    expect.truthy(#m == 2)
+    expect.truthy(m["key1"] == "value1")
+    expect.truthy(m["key2"] == "value2")
+  end)
+
+  nester.it("nested records", function()
+    local Boo = @record{
+      x: integer
+    }
+    local NestedFoo = @record{
+      boo: Boo,
+      vboos: vector(Boo),
+      mboos: hashmap(string, Boo),
+    }
+    local foo: NestedFoo = expect.assert(json.parse([[{
+      "boo": {"x":1},
+      "vboos": [{"x":2}, {"x":3}],
+      "mboos": {"first":{"x":4}, "second":{"x":3}}
+    }]], @NestedFoo))
+    expect.truthy(foo.boo.x == 1)
+    expect.truthy(foo.vboos[0].x == 2)
+    expect.truthy(foo.vboos[1].x == 3)
+  end)
+end)

@@ -1,0 +1,251 @@
+--[[
+The json module.
+
+This module contains utilities to parse chunks JSON texts into
+Nelua types and vice-versa.
+
+TODO:
+* Handle escape sequences for strings.
+* The function may raise runtime errors when parsing invalid numbers.
+* The function may raise runtime errors when parsing integer that overflows.
+* Don't raise runtime error on invalid script sequence.
+* Parse \uXXXX in strings.
+]]
+
+require 'string'
+
+global json = @record{}
+
+local function isspace(c: byte): boolean <inline>
+  return c == ' '_b or (@cuint)(c)-'\t'_b < 5
+end
+
+local function isxdigit(c: byte): boolean <inline>
+  return (@cuint)(c)-'0'_b < 10 or -- [0-9]
+         ((@cuint)(c)|32)-'a'_b < 6 -- [a-fA-F]
+end
+
+local function isnumdigit(c: byte): boolean <inline>
+  return isxdigit(c) or -- hex digit
+         c == '+'_b or c == '-'_b or -- sign
+         c == '.'_b -- fractional
+end
+
+local function islower(c: byte): boolean <inline>
+  return ((@cuint)(c)-'a'_b < 26)
+end
+
+local function unescape(s: string): string <inline>
+  local sb: stringbuilder
+  local buf: span(byte) = sb:prepare(s.size)
+  local i: usize, j: usize
+  while i < s.size do
+    local c: byte = s.data[i]
+    i = i + 1
+    if c == '\\' then
+      c = s.data[i]
+      i = i + 1
+      switch c do
+        case '"'_b then buf.data[j] = '\"'_b
+        case '\\'_b then buf.data[j] = '\\'_b
+        case '/'_b then buf.data[j] = '/'_b
+        case 'b'_b then buf.data[j] = '\b'_b
+        case 't'_b then buf.data[j] = '\t'_b
+        case 'n'_b then buf.data[j] = '\n'_b
+        case 'f'_b then buf.data[j] = '\f'_b
+        case 'r'_b then buf.data[j] = '\r'_b
+        case 'u'_b then -- TODO
+        else error 'invalid string escape sequence'
+      end
+    else
+      buf.data[j] = c
+    end
+    j = j + 1
+  end
+  sb:commit(j)
+  return sb:promote()
+end
+
+--[[
+Parses JSON text from `chunk` into type `T`.
+Returns type `T`, an error message in case of errors, and number of characters parsed.
+
+This parser creates a specialized JSON parser at compile-time.
+
+This parser follow these rules:
+* `T` is used as a schema and must always be a `record`, `hashmap`, `vector,` or `sequence` type.
+* The schema `T` cannot be incomplete or have missing fields, otherwise parse error will occur.
+* The schema `T` types cannot mismatch the JSON chunk, otherwise parse error will occur.
+* The schema `T` must always be a `record`, `hashmap`, `vector,` or `sequence` type.
+* Missing fields in the JSON chunk will be initialized to zeros.
+* Parsed strings and containers allocates new memory.
+* Follows JSON 4 spec (JSON 5 is not supported).
+
+The following types are handled:
+* `vector` and `sequence`, parsed from JSON arrays.
+* `hashmap` where `K` is a `string`, parsed from JSON objects.
+* `record` types, parsed from JSON objects.
+* `string`, parsed from JSON strings.
+* `boolean`, parsed from JSON `true`, `false` or `null`.
+* All primitive integer and float types are parsed from JSON numbers.
+* Records may be nested.
+]]
+function json.parse(chunk: string, T: type): (auto, string, usize)
+  local res: T
+  local i: usize = 0
+  local s: *[0]byte, slen: usize = chunk.data, chunk.size
+  local tmpinit: usize
+  local c: byte
+  local tmpstr: string
+  local tmpbool: boolean
+  -- macros utils
+  ## local function skip()
+    while i < slen and isspace(s[i]) do i = i + 1 end
+  ## end
+  ## local function peekc()
+    c = i < slen and s[i] or 0
+  ## end
+  ## local function maybe_comma(ec)
+    ## peekc()
+    if c == ','_b then
+      i = i + 1
+      ## skip()
+      ## peekc()
+      if c == #[string.byte(ec)]# then
+        break
+      end
+    else
+      break
+    end
+  ## end
+  ## local function expect_tok(ec, noskip)
+    if i >= slen or s[i] ~= #[string.byte(ec)]# then
+      return res, #['expected token `'..ec..'`, perhaps the schema mismatches the JSON?']#, i
+    end
+    i = i + 1
+    ## if not noskip then skip() end
+  ## end
+  ## local function expect_string()
+    ## expect_tok('"', true)
+    tmpinit = i
+    while i < slen and (s[i] ~= '"'_b or s[i-1] == '\\'_b) do i = i + 1 end
+    tmpstr = string{data=&s[tmpinit], size=i-tmpinit}
+    ## expect_tok'"'
+  ## end
+  ## local function expect_number()
+    tmpinit = i
+    while i < slen and isnumdigit(s[i]) do i = i + 1 end
+    tmpstr = string{data=&s[tmpinit], size=i-tmpinit}
+    ## skip()
+  ## end
+  ## local function expect_boolean()
+    tmpinit = i
+    while i < slen and islower(s[i]) do i = i + 1 end
+    tmpstr = string{data=&s[tmpinit], size=i-tmpinit}
+    ## skip()
+  ## end
+  -- parse
+  ## skip()
+  ## if res.type.is_vector or res.type.is_sequence then -- parse array into vector/sequence
+    ## expect_tok'[' peekc()
+    if c ~= ']'_byte then
+      while true do
+        ## if res.type.subtype.is_float then
+          ## expect_number()
+          res:push(tonumber(tmpstr))
+        ## elseif res.type.subtype.is_integral then
+          ## expect_number()
+          res:push(tointeger(tmpstr))
+        ## elseif res.type.subtype.is_boolean then
+          ## expect_boolean()
+          res:push(tmpstr == 'true')
+        ## elseif res.type.subtype.is_string then
+          ## expect_string()
+          res:push(unescape(tmpstr))
+        ## elseif res.type.subtype.is_record then
+          local elem: #[res.type.subtype]#, err: string, advlen: usize =
+            json.parse(string{data=&s[i],size=slen-i}, #[res.type.subtype]#)
+          res:push(elem)
+          i = i + advlen
+          if err.size > 0 then return res, err, i end
+        ## else
+          ## static_error("cannot parse array element of type '%s'", res.type.subtype)
+        ## end
+        ## maybe_comma']'
+      end
+    end
+    ## expect_tok']'
+  ## elseif res.type.is_hashmap then -- parse object into hashmap
+    ## expect_tok'{' peekc()
+    if c ~= '}'_byte then
+      while true do
+        ## expect_string()
+        local fieldname: string = tmpstr
+        ## expect_tok':'
+        ## if res.type.V.is_float then
+          ## expect_number()
+          res[fieldname] = tonumber(tmpstr)
+        ## elseif res.type.V.is_integral then
+          ## expect_number()
+          res[fieldname] = tointeger(tmpstr)
+        ## elseif res.type.V.is_boolean then
+          ## expect_boolean()
+          res[fieldname] = tmpstr == 'true'
+        ## elseif res.type.V.is_string then
+          ## expect_string()
+          res[fieldname] = unescape(tmpstr)
+        ## elseif res.type.V.is_record then
+          local err: string <noinit>, advlen: usize <noinit>
+          res[fieldname], err, advlen = json.parse(string{data=&s[i],size=slen-i}, #[res.type.V]#)
+          i = i + advlen
+          if err.size > 0 then return res, err, i end
+        ## else
+          ## static_error("cannot parse array element of type '%s'", res.type.subtype)
+        ## end
+        ## maybe_comma'}'
+      end
+    end
+    ## expect_tok'}'
+  ## elseif res.type.is_record then -- parse object into a record
+    ## expect_tok'{' peekc()
+    if c ~= '}'_byte then
+      while true do
+        ## expect_string()
+        local fieldname: string = tmpstr
+        ## expect_tok':'
+        ## for _,field in ipairs(res.type.fields) do
+          if fieldname == #[field.name]# then
+            ## if field.type.is_float then
+              ## expect_number()
+              res.#|field.name|# = tonumber(tmpstr)
+            ## elseif field.type.is_integral then
+              ## expect_number()
+              res.#|field.name|# = tointeger(tmpstr)
+            ## elseif field.type.is_boolean then
+              ## expect_boolean()
+              res.#|field.name|# = tmpstr == 'true'
+            ## elseif field.type.is_string then
+              ## expect_string()
+              res.#|field.name|# = unescape(tmpstr)
+            ## elseif field.type.is_record then
+              local err: string <noinit>, advlen: usize <noinit>
+              res.#|field.name|#, err, advlen = json.parse(string{data=&s[i],size=slen-i}, #[field.type]#)
+              i = i + advlen
+              if err.size > 0 then return res, err, i end
+            ## else
+              ## static_error("cannot parse field '%s' of type '%s'", field.name, field.type)
+            ## end
+            goto nextfield
+          end
+        ## end
+        return res, "JSON has extra fields not defined in the schema", i
+::nextfield::
+        ## maybe_comma'}'
+      end
+    end
+    ## expect_tok'}'
+  ## else
+    ## static_error("cannot parse JSON into type '%s'", T)
+  ## end
+  return res, (@string){}, i
+end

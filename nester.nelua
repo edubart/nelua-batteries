@@ -406,9 +406,10 @@ function expect.error(msg: facultative(string)): void <alwayspoly>
 end
 
 -- Raises test error message `msg` if `cond` is false.
-function expect.assert(cond: boolean, msg: string): void <alwayspoly>
+function expect.assert(cond: auto, msg: string): auto <alwayspoly>
   ## local polysrcloc = polysrcloc
-  if not v then
+  if not cond or #msg > 0 then
     fail(msg, #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
   end
+  return cond
 end
