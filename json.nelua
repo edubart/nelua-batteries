@@ -17,13 +17,13 @@ global json = @record{}
 
 -- Helper to check if `c` is a space.
 local function isspace(c: byte): boolean <inline>
-  return c == ' '_b or (@cuint)(c)-'\t'_b < 5
+  return c == ' '_b or c-'\t'_b < 5
 end
 
 -- Helper to check if `c` is a hexadecimal digit (matches [0-9a-fA-F]).
 local function isxdigit(c: byte): boolean <inline>
-  return (@cuint)(c)-'0'_b < 10 or -- [0-9]
-         ((@cuint)(c)|32)-'a'_b < 6 -- [a-fA-F]
+  return c-'0'_b < 10 or -- [0-9]
+         (c|32)-'a'_b < 6 -- [a-fA-F]
 end
 
 -- Helper to check if `c` is a number digit (matches [A-Fa-f.+-]).
@@ -35,7 +35,7 @@ end
 
 -- Helper to check if `c` is a lowercase character (matches [a-z]).
 local function islower(c: byte): boolean <inline>
-  return ((@cuint)(c)-'a'_b < 26)
+  return c-'a'_b < 26
 end
 
 -- Helper to convert an integer to its corresponding UTF-8 byte sequence.
@@ -62,41 +62,46 @@ end
 
 -- Helper to remove escape sequences from a JSON string.
 local function unescape(s: string): (string, string)
-  local sb: stringbuilder <close>
-  local buf: span(byte) = sb:prepare(s.size)
-  local i: usize, j: usize
+  if s.size == 0 then return (@string){}, (@string){} end
+  if not memory.scan(s.data, '\\'_b, s.size) then return string.copy(s), (@string){} end
+  local ns: string = string.create(s.size)
+  local i: usize, j: usize = 0, 0
   while i < s.size do
     local c: byte = s.data[i]
     i = i + 1
     if likely(c ~= '\\'_b) then
-      buf.data[j] = c
+      ns.data[j] = c
     else
       c = s.data[i]
       i = i + 1
       switch c do
-        case '"'_b, '\\'_b, '/'_b then buf.data[j] = c
-        case 'b'_b then buf.data[j] = '\b'_b
-        case 't'_b then buf.data[j] = '\t'_b
-        case 'n'_b then buf.data[j] = '\n'_b
-        case 'f'_b then buf.data[j] = '\f'_b
-        case 'r'_b then buf.data[j] = '\r'_b
+        case '"'_b, '\\'_b, '/'_b then ns.data[j] = c
+        case 'b'_b then ns.data[j] = '\b'_b
+        case 't'_b then ns.data[j] = '\t'_b
+        case 'n'_b then ns.data[j] = '\n'_b
+        case 'f'_b then ns.data[j] = '\f'_b
+        case 'r'_b then ns.data[j] = '\r'_b
         case 'u'_b then
           for k: usize=i,<i+4 do
             if k >= s.size or not isxdigit(s.data[k]) then
-              return (@string){}, 'expected 4 hex digits in utf8 sequence'
+              ns:destroy()
+              return ns, 'expected 4 hex digits in utf8 sequence'
             end
           end
           local utf8buf: [8]byte, len: int32 = utf8esc(tointeger((@string){data=&s.data[i],size=4}, 16))
-          memory.copy(&buf.data[j], &utf8buf[0], len)
+          memory.copy(&ns.data[j], &utf8buf[0], len)
           i = i + 4
-          j = j + len - 1
-        else return (@string){}, 'unexpected string escape sequence'
+          j = j + (@usize)(len) - 1
+      else
+        ns:destroy()
+        return ns, 'unexpected string escape sequence'
       end
     end
     j = j + 1
   end
-  sb:commit(j)
-  return sb:promote(), (@string){}
+  ns.data[j] = 0
+  ns.size = j
+  return ns, (@string){}
 end
 
 --[[
@@ -130,6 +135,7 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
   local s: *[0]byte, slen: usize = chunk.data, chunk.size
   local tmpinit: usize
   local c: byte
+  local err: string
   local tmpstr: string, tmpbool: boolean
   -- macros utils
   ## local function skip_whitespaces()
@@ -181,16 +187,14 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
       ## expect_boolean()
       local v: #[vtype]# = tmpstr == 'true'
       if not v and tmpstr ~= 'false' then
-        return res, 'expected a boolean, perhaps due to schema mismatch', i
+        err = 'expected a boolean, perhaps due to schema mismatch'
       end
     ## elseif vtype.is_string then
       ## expect_string()
       local v: #[vtype]#, err: string = unescape(tmpstr)
-      if err.size > 0 then return res, err, i end
     ## elseif vtype.is_record then
       local v: #[vtype]#, err: string, advlen: usize = json.parse(string{data=&s[i],size=slen-i}, #[vtype]#)
       i = i + advlen
-      if err.size > 0 then return res, err, i end
     ## else static_error("cannot parse element of type '%s'", vtype) end
   ## end
   -- begin parsing
@@ -200,6 +204,7 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
     while c ~= ']'_byte do
       ## expect_value(res.type.subtype)
       res:push(v)
+      if err.size > 0 then return res, err, i end
       ## skip_comma_peek_char()
     end
     ## expect_token']'
@@ -211,6 +216,7 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
       fieldname = tmpstr
       ## expect_token':' expect_value(res.type.V)
       res[fieldname] = v
+      if err.size > 0 then return res, err, i end
       ## skip_comma_peek_char()
     end
     ## expect_token'}'
@@ -225,6 +231,7 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
         if fieldname == #[field.name]# then
           ## expect_value(field.type)
           res.#|field.name|# = v
+          if err.size > 0 then return res, err, i end
           goto nextfield
         end
       ## end

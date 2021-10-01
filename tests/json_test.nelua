@@ -1,5 +1,6 @@
 require 'json'
 require 'vector'
+require 'hashmap'
 require 'nester'
 
 local Person = @record{name: string, age: integer}
