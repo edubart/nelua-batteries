@@ -3,6 +3,7 @@ require 'vector'
 require 'nester'
 
 local Person = @record{name: string, age: integer}
+  local String: type = @record{s: string}
 
 nester.describe("json", function()
   nester.it("primitives", function()
@@ -20,7 +21,6 @@ nester.describe("json", function()
       "s": "test",
       "bt": true,
       "bf": false,
-      "bn": null,
     }]]
     local foo: Foo, err: string, len: usize = json.parse(primjson, @Foo)
     expect.truthy(foo.i == 1337)
@@ -28,7 +28,6 @@ nester.describe("json", function()
     expect.truthy(foo.s == "test")
     expect.truthy(foo.bt == true)
     expect.truthy(foo.bf == false)
-    expect.truthy(foo.bn == false)
     expect.truthy(len == #primjson)
     expect.truthy(#err == 0)
   end)
@@ -90,5 +89,28 @@ nester.describe("json", function()
     expect.truthy(foo.boo.x == 1)
     expect.truthy(foo.vboos[0].x == 2)
     expect.truthy(foo.vboos[1].x == 3)
+  end)
+
+  nester.it("escape sequence", function()
+    expect.equal(expect.assert(json.parse([[{
+      "s": "\"\\\/\b\t\n\f\r",
+    }]], String)).s, "\"\\/\b\t\n\f\r")
+  end)
+
+  nester.it("utf8 escape", function()
+    expect.equal(expect.assert(json.parse([[{
+      "s": "\u0000\uFFFF\u007f\u00f8",
+    }]], String)).s, "\u{0000}\u{FFFF}\u{007f}\u{00f8}")
+  end)
+
+  nester.it("inline record type", function()
+    local p = expect.assert(json.parse([[{
+      "name": "John",
+      "age": 20
+    }]], @record{
+      name: string,
+      age: integer
+    }))
+    assert(p.name == 'John' and p.age == 20)
   end)
 end)
