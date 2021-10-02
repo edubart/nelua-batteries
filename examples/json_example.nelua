@@ -1,0 +1,48 @@
+require 'json'
+require 'vector'
+require 'hashmap'
+
+local Person = @record{
+  name: string,
+  age: integer,
+  female: boolean,
+  children: vector(Person),
+  wallet: hashmap(string, integer),
+}
+
+local john_json = [[
+{
+  "name": "John",
+  "age": 30,
+  "female": false,
+  "children": [
+    {
+      "name": "Ana",
+      "age": 1,
+      "female": true
+    },
+    {
+      "name": "Paul",
+      "age": 3,
+      "female": false
+    }
+  ],
+  "wallet": {
+    "USD": 400,
+    "EUR": 30
+  }
+}
+]]
+
+local john: Person = json.parse(john_json, @Person)
+print('name:', john.name)
+print('age:', john.age)
+print('female:', john.female)
+print('children:')
+for k,child in ipairs(john.children) do
+  print(child.name, child.age)
+end
+print('wallet:')
+for currency,amount in pairs(john.wallet) do
+  print(currency, amount)
+end
