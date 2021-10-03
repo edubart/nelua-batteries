@@ -4,7 +4,7 @@ require 'hashmap'
 require 'nester'
 
 local Person = @record{name: string, age: integer}
-  local String: type = @record{s: string}
+local String: type = @record{s: string}
 
 nester.describe("json", function()
   nester.it("primitives", function()
@@ -24,33 +24,46 @@ nester.describe("json", function()
       "bf": false,
     }]]
     local foo: Foo, err: string, len: usize = json.parse(primjson, @Foo)
-    expect.truthy(foo.i == 1337)
-    expect.truthy(foo.n == 0.5)
-    expect.truthy(foo.s == "test")
-    expect.truthy(foo.bt == true)
-    expect.truthy(foo.bf == false)
-    expect.truthy(len == #primjson)
-    expect.truthy(#err == 0)
+    expect.equal(foo.i, 1337)
+    expect.equal(foo.n, 0.5)
+    expect.equal(foo.s, "test")
+    expect.equal(foo.bt, true)
+    expect.equal(foo.bf, false)
+    expect.equal(len, #primjson)
+    expect.equal(#err, 0)
+    expect.equal(json.emit(foo), [[{"i":1337,"n":0.5,"s":"test","bt":true,"bf":false,"bn":false}]])
   end)
 
   nester.it("record", function()
     local p: Person, err: string, len: usize = json.parse("{}", @Person)
     expect.truthy(p.name == "" and p.age == 0 and #err == 0 and len == 2)
+    expect.equal(json.emit(p), [[{"name":"","age":0}]])
+
     p, err = json.parse([[{"name":"John","age":20}]], @Person)
     expect.truthy(p.name == 'John' and p.age == 20 and #err == 0)
+    expect.equal(json.emit(p), [[{"name":"John","age":20}]])
+
     p, err = json.parse([[{"name":"John"}]], @Person)
     expect.truthy(p.name == 'John' and p.age == 00 and #err == 0)
+    expect.equal(json.emit(p), [[{"name":"John","age":0}]])
   end)
 
   nester.it("vector", function()
     local v: vector(integer), err: string, len: usize = json.parse("[]", @vector(integer))
     expect.truthy(#v == 0 and #err == 0 and len == 2)
+    expect.equal(json.emit(v), "[]")
+
     v, err = json.parse("[1]", @vector(integer))
     expect.truthy(#v == 1 and v[0] == 1 and #err == 0)
+    expect.equal(json.emit(v), "[1]")
+
     v, err = json.parse("[1,2]", @vector(integer))
     expect.truthy(#v == 2 and v[0] == 1 and v[1] == 2 and #err == 0)
+    expect.equal(json.emit(v), "[1,2]")
+
     v, err = json.parse("[1,2,3,]", @vector(integer))
     expect.truthy(#v == 3 and v[0] == 1 and v[1] == 2 and v[2] == 3 and #err == 0)
+    expect.equal(json.emit(v), "[1,2,3]")
   end)
 
   nester.it("vector with record", function()
@@ -61,6 +74,7 @@ nester.describe("json", function()
     expect.truthy(#v == 2)
     expect.truthy(v[0].name == 'John' and v[0].age == 20)
     expect.truthy(v[1].name == 'Paul' and v[1].age == 21)
+    expect.equal(json.emit(v), '[{"name":"John","age":20},{"name":"Paul","age":21}]')
   end)
 
   nester.it("hashmap", function()
@@ -71,6 +85,7 @@ nester.describe("json", function()
     expect.truthy(#m == 2)
     expect.truthy(m["key1"] == "value1")
     expect.truthy(m["key2"] == "value2")
+    expect.equal(json.emit(m), '{"key1":"value1","key2":"value2"}')
   end)
 
   nester.it("nested records", function()
@@ -90,6 +105,7 @@ nester.describe("json", function()
     expect.truthy(foo.boo.x == 1)
     expect.truthy(foo.vboos[0].x == 2)
     expect.truthy(foo.vboos[1].x == 3)
+    expect.equal(json.emit(foo), '{"boo":{"x":1},"vboos":[{"x":2},{"x":3}],"mboos":{"first":{"x":4},"second":{"x":3}}}')
   end)
 
   nester.it("escape sequence", function()
@@ -113,5 +129,13 @@ nester.describe("json", function()
       age: integer
     }))
     assert(p.name == 'John' and p.age == 20)
+
+    expect.equal(json.emit((@record{
+      name: string,
+      age: integer
+    }){
+      name = 'John',
+      age = 20
+    }), '{"name":"John","age":20}')
   end)
 end)

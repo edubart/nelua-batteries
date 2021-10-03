@@ -7,7 +7,8 @@ Nelua types and vice-versa.
 TODO:
 * The function may raise runtime errors when parsing invalid numbers.
 * The function may raise runtime errors when parsing integer that overflows.
-* JSON emitter.
+* Handle allocation errors on `json.emit`.
+* Escape strings in `json.emit`.
 ]]
 
 require 'string'
@@ -240,6 +241,70 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
       ## skip_comma_peek_char()
     end
     ## expect_token'}'
-  ## else static_error("cannot parse JSON into type '%s'", T) end
+  ## else static_error("cannot parse JSON into type '%s'", res.type) end
   return res, (@string){}, i
+end
+
+--[[
+Emit JSON text from `obj` returning a string.
+If argument `sb` is present,
+then the JSON is is actually emitted into to the string builder and returns nothing.
+
+The `obj` type should follow same rules as `json.parse`.
+]]
+function json.emit(obj: auto, sb: facultative(*stringbuilder))
+  ## local returnstr = sb.type.is_niltype
+  ## if returnstr then
+  local sbo: stringbuilder
+  local sb: *stringbuilder = &sbo
+  ## end
+  ## local objtype = obj.type:implicit_deref_type() -- consider pointers
+  -- macros
+  ## local function emit_value(v)
+    ## if v.type.subtype.is_scalar or v.type.subtype.is_boolean then
+      sb:write($#[v]#)
+    ## elseif v.type.subtype.is_stringy then
+      sb:write('"', $#[v]#, '"')
+    ## elseif v.type.subtype.is_record then
+      json.emit(#[v]#, sb)
+    ## else static_error("cannot emit element of type '%s'", v.type.subtype) end
+  ## end
+  -- emit
+  ## if objtype.is_vector or objtype.is_sequence or objtype.is_array or objtype.is_span then
+    -- emit contigous container as an array
+    local T: type = #[objtype.subtype]#
+    sb:write'['
+    for _: isize, v: *T in mipairs(obj) do
+      ## emit_value(v)
+      sb:write','
+    end
+    if #obj > 0 then sb:rollback(1) end -- remove extra comma
+    sb:write']'
+  ## elseif objtype.is_hashmap then -- emit hashmap as an object
+    local K: type, V: type = #[objtype.K]#, #[objtype.V]#
+    sb:write'{'
+    for k: K, v: *V in mpairs(obj) do
+      local pk: *K = &k
+      ## emit_value(pk)
+      sb:write':'
+      ## emit_value(v)
+      sb:write','
+    end
+    if #obj > 0 then sb:rollback(1) end -- remove extra comma
+    sb:write'}'
+  ## elseif objtype.is_record then -- emit record as an object
+    sb:write'{'
+    ## for i,field in ipairs(objtype.fields) do
+      sb:write('"', #[field.name]#, '":')
+      local v: auto = &obj.#|field.name|#
+      ## emit_value(v)
+      ## if i<#objtype.fields then
+        sb:write','
+      ## end
+    ## end
+    sb:write'}'
+  ## else static_error("cannot emit JSON from type '%s'", objtype) end
+  ## if returnstr then
+  return sb:promote()
+  ## end
 end

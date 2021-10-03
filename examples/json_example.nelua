@@ -10,6 +10,7 @@ local Person = @record{
   wallet: hashmap(string, integer),
 }
 
+-- Parsing
 local john_json = [[
 {
   "name": "John",
@@ -35,6 +36,7 @@ local john_json = [[
 ]]
 
 local john: Person = json.parse(john_json, @Person)
+print('== Parsing')
 print('name:', john.name)
 print('age:', john.age)
 print('female:', john.female)
@@ -46,3 +48,8 @@ print('wallet:')
 for currency,amount in pairs(john.wallet) do
   print(currency, amount)
 end
+
+-- Emitting
+local json: string = json.emit(john)
+print('== Emitting')
+print(json)
