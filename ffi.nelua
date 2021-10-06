@@ -10,7 +10,7 @@ if ccinfo.is_unix then
     linklib 'dl'
   end
 elseif ccinfo.is_windows then
-  cinclude '<windows.h>'
+  cinclude '<libloaderapi.h>'
   linklib 'kernel32'
 elseif ccinfo.is_haiku or ccinfo.is_beos then
   cinclude '<be/kernel/image.h>'
