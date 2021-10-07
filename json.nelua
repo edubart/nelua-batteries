@@ -271,7 +271,7 @@ function json.emit(obj: auto, sb: facultative(*stringbuilder))
   ## end
   -- emit
   ## if objtype.is_vector or objtype.is_sequence or objtype.is_array or objtype.is_span then
-    -- emit contigous container as an array
+    -- emit contiguous container as an array
     local T: type = #[objtype.subtype]#
     sb:write'['
     for _: isize, v: *T in mipairs(obj) do
