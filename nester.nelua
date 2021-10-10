@@ -62,33 +62,11 @@ you can set the following environment variables before running a test suite:
 Note that these configurations can be changed via script too, check the documentation.
 ]]
 
+require 'errorhandling'
 require 'io'
 require 'os'
 require 'sequence'
 require 'coroutine'
-
--- Called on test errors.
-local function fail(msg: string, filename: string, lineno: integer): void
-  local co: coroutine, ismain: boolean = coroutine.running()
-  assert(not ismain,  'you can only raise Nester errors from inside an it block')
-  coroutine.push(co, msg, filename, lineno)
-  coroutine.yield()
-end
-
--- Called when trying to run a test.
-local function try(func: auto): (boolean, string, string, integer)
-  local co: coroutine = coroutine.spawn(func)
-  if co:status() == 'dead' then -- success
-    coroutine.destroy(co)
-    return true, (@string){}, (@string){}, 0
-  else -- failed
-    local err: string
-    local filename: string
-    local lineno: integer
-    coroutine.pop(co, &err, &filename, &lineno)
-    return false, err, filename, lineno
-  end
-end
 
 -- Returns whether the terminal supports UTF-8 characters.
 local function is_utf8term(): boolean
@@ -149,6 +127,8 @@ local start: number = 0
 local befores: sequence(sequence(function(name: string)))
 local afters: sequence(sequence(function(name: string)))
 local names: sequence(string)
+local last_error_filename: string
+local last_error_lineno: integer
 
 -- Color codes.
 local Color = @enum{
@@ -257,7 +237,10 @@ local function nester_it(name: string, func: function(), filename: string, linen
     end
   end
   -- run the test, capturing errors if any
-  local success: boolean, err: string, errfilename: string, errlineno: integer = try(func)
+  local success: boolean, err: string <close> = pcall(func)
+  local errfilename: string, errlineno: integer = last_error_filename, last_error_lineno
+  last_error_filename = (@string){}
+  last_error_lineno = 0
   -- count successes and failures
   if success then
     successes = successes + 1
@@ -364,8 +347,10 @@ global expect: type = @record{}
 function expect.equal(a: auto, b: auto): void <alwayspoly>
   ## local polysrcloc = polysrcloc
   if not (a == b) then
-    fail(string.format('expected value be equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
-      #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
+    last_error_filename = #[polysrcloc.srcname or '']#
+    last_error_lineno = #[polysrcloc.lineno or 0]#
+    local msg: string = string.format('expected value be equal\nfirst value:\n%s\nsecond value:\n%s', a, b)
+    error(msg, 0)
   end
 end
 
@@ -373,8 +358,10 @@ end
 function expect.not_equal(a: auto, b: auto): void <alwayspoly>
   ## local polysrcloc = polysrcloc
   if a == b then
-    fail(string.format('expected values to be not equal\nfirst value:\n%s\nsecond value:\n%s', a, b),
-      #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
+    last_error_filename = #[polysrcloc.srcname or '']#
+    last_error_lineno = #[polysrcloc.lineno or 0]#
+    local msg: string <close> = string.format('expected values to be not equal\nfirst value:\n%s\nsecond value:\n%s', a, b)
+    error(msg, 0)
   end
 end
 
@@ -382,8 +369,9 @@ end
 function expect.truthy(v: boolean): void <alwayspoly>
   ## local polysrcloc = polysrcloc
   if not v then
-    fail('expected expression to be true, but got false',
-      #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
+    last_error_filename = #[polysrcloc.srcname or '']#
+    last_error_lineno = #[polysrcloc.lineno or 0]#
+    error('expected expression to be true, but got false', 0)
   end
 end
 
@@ -391,8 +379,9 @@ end
 function expect.falsy(v: boolean): void <alwayspoly>
   ## local polysrcloc = polysrcloc
   if v then
-    fail('expected expression to be true, but got true',
-      #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
+    last_error_filename = #[polysrcloc.srcname or '']#
+    last_error_lineno = #[polysrcloc.lineno or 0]#
+    error('expected expression to be true, but got true', 0)
   end
 end
 
@@ -402,14 +391,16 @@ function expect.error(msg: facultative(string)): void <alwayspoly>
   ## if msg.type.is_niltype then
   local msg: string = 'error raised'
   ## end
-  fail(msg, #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
+  last_error_filename = #[polysrcloc.srcname or '']#
+  last_error_lineno = #[polysrcloc.lineno or 0]#
+  error(msg, 0)
 end
 
 -- Raises test error message `msg` if `cond` is false.
 function expect.assert(cond: auto, msg: string): auto <alwayspoly>
   ## local polysrcloc = polysrcloc
   if not cond or #msg > 0 then
-    fail(msg, #[polysrcloc.srcname or '']#, #[polysrcloc.lineno or 0]#)
+    error(msg, 0)
   end
   return cond
 end
