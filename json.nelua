@@ -166,9 +166,14 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
     ## expect_token'"'
   ## end
   ## local function expect_number()
-    tmpinit = i
-    while i < slen and isnumdigit(s[i]) do i = i + 1 end
-    tmpstr = string{data=&s[tmpinit], size=i-tmpinit}
+    ## peek_char()
+    if c == '"'_b then
+      ## expect_string()
+    else
+      tmpinit = i
+      while i < slen and isnumdigit(s[i]) do i = i + 1 end
+      tmpstr = string{data=&s[tmpinit], size=i-tmpinit}
+    end
     ## skip_whitespaces()
   ## end
   ## local function expect_boolean()
