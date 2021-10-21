@@ -88,11 +88,11 @@ end
 -- Returns the concatenation of all strings from `v` separated by `sep`.
 local function concat_strings(v: sequence(string), sep: string): string
   local sb: stringbuilder
-  for i:integer=0,<#v-1 do
+  for i:integer=1,<#v-1 do
     sb:write(v[i], sep)
   end
   if #v > 0 then
-    sb:write(v[#v-1])
+    sb:write(v[#v])
   end
   return sb:promote()
 end
