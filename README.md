@@ -13,7 +13,6 @@ but also a wrapper to make it easier to use it with Nelua.
 * Some libraries are not tested on all platforms.
 * Some libraries are self contained when possible.
 * Some libraries may not work on all platforms or architectures.
-* Some libraries are under research and could perhaps be merged into Nelua standard library in the future, but probably won't.
 
 # List of libraries
 

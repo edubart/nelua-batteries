@@ -1,0 +1,73 @@
+require 'nester'
+require 'os'
+
+local SQLite3 = require 'sqlite3'
+
+local db: SQLite3, err: SQLite3.Error, errmsg: string
+
+nester.describe("sqlite3", function()
+  nester.it("new database", function()
+    db, err = SQLite3.open('testdb.sqlite3')
+    expect.equal(err, SQLite3.Error.OK)
+    expect.truthy(db:isopen())
+    expect.equal(db:close(), SQLite3.Error.OK)
+
+    db, err =  SQLite3.open('testdb.sqlite3', SQLite3.OpenFlags.READWRITE)
+    expect.equal(err, SQLite3.Error.OK)
+    expect.equal(db:close(), SQLite3.Error.OK)
+  end)
+
+  nester.before(function(name: string)
+    db, err, errmsg = SQLite3.open('testdb.sqlite3')
+    assert(db:isopen(), err)
+  end)
+
+  nester.after(function(name: string)
+    db:close()
+  end)
+
+  nester.it("exec", function()
+    db:exec[[
+      DROP TABLE IF EXISTS names;
+      CREATE TABLE IF NOT EXISTS names (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL
+      );
+      INSERT INTO names (name) VALUES ('John');
+      INSERT INTO names (name) VALUES ('Paul');
+    ]]
+    local count: integer = 0
+    db:exec([[
+      SELECT * FROM names;
+    ]], function(udata: pointer, ncols: cint, values: *[0]cstring, names: *[0]cstring): cint
+      local count: *integer = (@*integer)(udata)
+      $count = $count + 1
+      if $count == 1 then
+        expect.equal(values[0], '1')
+        expect.equal(values[1], 'John')
+      else
+        expect.equal(values[0], '2')
+        expect.equal(values[1], 'Paul')
+      end
+      expect.equal(names[0], 'id')
+      expect.equal(names[1], 'name')
+      return 0
+    end, &count)
+    expect.equal(count, 2)
+  end)
+
+  nester.it("urows", function()
+    local count = 0
+    for id, name <close> in db:urows("SELECT id, name FROM names", @int64, @string) do
+      if id == 1 then
+        expect.equal(name, 'John')
+      elseif id == 2 then
+        expect.equal(name, 'Paul')
+      end
+      count = count + 1
+    end
+    expect.equal(count, 2)
+  end)
+
+  os.remove('testdb.sqlite3')
+end)

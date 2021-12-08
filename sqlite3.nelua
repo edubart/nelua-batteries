@@ -1,0 +1,242 @@
+--[[
+Minimal module with helpers for easy work with SQLite3.
+]]
+
+----------------------------------------------------------------------------------------------------
+-- Import SQLite3 API
+
+##[[
+cinclude '<sqlite3.h>'
+linklib 'sqlite3'
+]]
+
+local sqlite3: type <cimport,nodecl,forwarddecl> = @record{}
+local function sqlite3_close(a1: *sqlite3): cint <cimport,nodecl> end
+local function sqlite3_close_v2(a1: *sqlite3): cint <cimport,nodecl> end
+local function sqlite3_exec(a1: *sqlite3, sql: cstring, callback: function(pointer, cint, *cstring, *cstring): cint, a4: pointer, errmsg: *cstring): cint <cimport,nodecl> end
+local function sqlite3_free(a1: pointer): void <cimport,nodecl> end
+local function sqlite3_open_v2(filename: cstring, ppDb: **sqlite3, flags: cint, zVfs: cstring): cint <cimport,nodecl> end
+local function sqlite3_errmsg(a1: *sqlite3): cstring <cimport,nodecl> end
+local function sqlite3_errstr(a1: cint): cstring <cimport,nodecl> end
+local sqlite3_stmt: type <cimport,nodecl,forwarddecl> = @record{}
+local function sqlite3_prepare_v2(db: *sqlite3, zSql: cstring, nByte: cint, ppStmt: **sqlite3_stmt, pzTail: *cstring): cint <cimport,nodecl> end
+local function sqlite3_column_count(pStmt: *sqlite3_stmt): cint <cimport,nodecl> end
+local function sqlite3_step(a1: *sqlite3_stmt): cint <cimport,nodecl> end
+local function sqlite3_column_int64(a1: *sqlite3_stmt, iCol: cint): int64 <cimport,nodecl> end
+local function sqlite3_column_text(a1: *sqlite3_stmt, iCol: cint): *cuchar <cimport,nodecl> end
+local function sqlite3_finalize(pStmt: *sqlite3_stmt): cint <cimport,nodecl> end
+
+----------------------------------------------------------------------------------------------------
+-- SQLite3 module
+
+local SQLite3: type = @record{
+  db: *sqlite3
+}
+
+local SQLite3.Stmt: type = @record{
+  stmt: *sqlite3_stmt
+}
+
+local SQLite3.Error: type = @enum(int32){
+  OK          = 0,
+  ERROR       = 1,
+  INTERNAL    = 2,
+  PERM        = 3,
+  ABORT       = 4,
+  BUSY        = 5,
+  LOCKED      = 6,
+  NOMEM       = 7,
+  READONLY    = 8,
+  INTERRUPT   = 9,
+  IOERR       = 10,
+  CORRUPT     = 11,
+  NOTFOUND    = 12,
+  FULL        = 13,
+  CANTOPEN    = 14,
+  PROTOCOL    = 15,
+  EMPTY       = 16,
+  SCHEMA      = 17,
+  TOOBIG      = 18,
+  CONSTRAINT  = 19,
+  MISMATCH    = 20,
+  MISUSE      = 21,
+  NOLFS       = 22,
+  AUTH        = 23,
+  FORMAT      = 24,
+  RANGE       = 25,
+  NOTADB      = 26,
+  NOTICE      = 27,
+  WARNING     = 28,
+  ROW         = 100,
+  DONE        = 101,
+}
+
+local SQLite3.OpenFlags: type = @enum(int32){
+  READONLY        = 0x00000001,
+  READWRITE       = 0x00000002,
+  CREATE          = 0x00000004,
+  DELETEONCLOSE   = 0x00000008,
+  EXCLUSIVE       = 0x00000010,
+  AUTOPROXY       = 0x00000020,
+  URI             = 0x00000040,
+  MEMORY          = 0x00000080,
+  MAIN_DB         = 0x00000100,
+  TEMP_DB         = 0x00000200,
+  TRANSIENT_DB    = 0x00000400,
+  MAIN_JOURNAL    = 0x00000800,
+  TEMP_JOURNAL    = 0x00001000,
+  SUBJOURNAL      = 0x00002000,
+  SUPER_JOURNAL   = 0x00004000,
+  NOMUTEX         = 0x00008000,
+  FULLMUTEX       = 0x00010000,
+  SHAREDCACHE     = 0x00020000,
+  PRIVATECACHE    = 0x00040000,
+  WAL             = 0x00080000,
+  NOFOLLOW        = 0x01000000,
+  EXRESCODE       = 0x02000000,
+  MASTER_JOURNAL  = 0x00004000,
+}
+
+-- Close statement (used to cleanup for loops).
+function SQLite3.Stmt:__close()
+  if not self.stmt then return end
+  local res: SQLite3.Error = sqlite3_finalize(self.stmt)
+  assert(res == SQLite3.Error.OK, 'failed to close statement')
+  self.stmt = nilptr
+end
+
+function SQLite3.Error.__tostring(errcode: SQLite3.Error): string
+  return string.format('SQLite3 Error %d (%s)', errcode, sqlite3_errstr(errcode))
+end
+
+-- Returns true if database is open, false otherwise.
+function SQLite3:isopen(): boolean
+  return self ~= nilptr
+end
+
+--[[
+Compiles and executes the SQL statement(s) given in string `sql`.
+The statements are simply executed one after the other and not stored.
+The function returns `sqlite3.OK` on success or else a numerical error code.
+
+If one or more of the SQL statements are queries,
+then the callback function specified in `func` is invoked once for each row of the query result
+(if func is nil, no callback is invoked).
+The callback receives four arguments: `udata` (the third parameter of the db:exec() call),
+the number of columns in the row, a table with the column values and another table with the column names.
+The callback function should return 0.
+If the callback returns a non-zero value then the query is aborted,
+all subsequent SQL statements are skipped and db:exec() returns sqlite3.ABORT.
+]]
+function SQLite3:exec(sql: string,
+                      func: facultative(function(udata: pointer, ncols: cint, values: *[0]cstring, names: *[0]cstring): cint),
+                      udata: facultative(pointer)): (SQLite3.Error, string)
+  assert(self.db, 'attempt to use a closed sqlite database')
+  local cerrmsg: cstring
+  ## if func.type.is_niltype then
+    local res: SQLite3.Error = sqlite3_exec(self.db, sql, nilptr, nilptr, &cerrmsg)
+  ## else
+    local ExecCallback: type = @function(udata: pointer, ncols: cint, pvalues: *cstring, pnames: *cstring): cint
+    ## if udata.type.is_niltype then
+    local udata: pointer = nilptr
+    ## end
+    local res: SQLite3.Error = sqlite3_exec(self.db, sql, (@ExecCallback)(func), udata, &cerrmsg)
+  ## end
+  local errmsg: string = string.copy(cerrmsg)
+  sqlite3_free(cerrmsg)
+  return res, errmsg
+end
+
+--[[
+Closes a database.
+All SQL statements prepared using `db:prepare()` should have been finalized before this function is called.
+Returns `sqlite3.OK` on success or else a numerical error code.
+]]
+function SQLite3:close(): (SQLite3.Error, string)
+  assert(self.db, 'attempt to use a closed sqlite database')
+  local res: SQLite3.Error = sqlite3_close(self.db)
+  if res ~= SQLite3.Error.OK then
+    return res, sqlite3_errmsg(self.db)
+  end
+  self.db = nilptr
+  return res, (@string){}
+end
+
+--[[
+Opens (or creates if it does not exist) an SQLite database with name `filename`
+and returns its handle.
+In case of an error, the function returns a closed database, an error code and an error message.
+]]
+function SQLite3.open(filename: string, flags: facultative(int32)): (SQLite3, SQLite3.Error, string)
+  ## if flags.type.is_niltype then
+  local flags: int32 = SQLite3.OpenFlags.READWRITE | SQLite3.OpenFlags.CREATE
+  ## end
+  local db: *sqlite3
+  local status: SQLite3.Error = sqlite3_open_v2(filename, &db, flags, nilptr)
+  if status ~= SQLite3.Error.OK then
+    local errmsg: string
+    if db then
+      errmsg = string.copy(sqlite3_errmsg(db))
+      sqlite3_close(db)
+    else
+      errmsg = sqlite3_errstr(status)
+    end
+    return SQLite3{}, status, errmsg
+  end
+  return SQLite3{db=db}, status, (@string){}
+end
+
+-- Record used to store state of `urows`.
+local URowsState: type = @record{
+  db: *sqlite3,
+  stmt: *sqlite3_stmt,
+}
+
+--[[
+Creates an iterator that returns the successive rows selected by the SQL statement given in string `sql`.
+Each call to the iterator returns the values that correspond to the columns in the currently selected row.
+Types for each value to be returned by the iterator must be passed in `...`.
+]]
+function SQLite3:urows(sql: string, ...: varargs): (auto, auto, auto, SQLite3.Stmt)
+  local state: URowsState = {self.db}
+  local res: SQLite3.Error = sqlite3_prepare_v2(state.db, sql, #sql, &state.stmt, nilptr)
+  if res ~= SQLite3.Error.OK then
+    error(sqlite3_errmsg(state.db))
+  end
+  ##[[
+  local fortypes = {}
+  for i=1,select('#', ...) do
+    table.insert(fortypes, select(i, ...).attr.value)
+  end
+  static_assert(#fortypes > 0, 'missing value types in parameters')
+  ]]
+  local T: type = #[fortypes[1]]#
+  assert(sqlite3_column_count(state.stmt) == #[#fortypes]#, 'results has incompatible number of columns')
+  local function urows_next(state: URowsState, k: T)
+    local res: SQLite3.Error = sqlite3_step(state.stmt)
+    ## local fornodes = {}
+    ## for i,fortype in ipairs(fortypes) do
+      local #|'v'..i|#: #[fortype]#
+      ## table.insert(fornodes, _ENV['v'..i])
+    ## end
+    if res == SQLite3.Error.ROW then -- row available to read
+      ## for i,fortype in ipairs(fortypes) do
+        ## if fortype.is_string then
+          #|'v'..i|# = string.copy((@cstring)(sqlite3_column_text(state.stmt, #[i-1]#)))
+        ## elseif fortype.is_integral then
+          #|'v'..i|# = sqlite3_column_int64(state.stmt, #[i-1]#)
+        ## else
+          ## static_error("cannot handle type '%s'", fortype)
+        ## end
+      ## end
+      return true, #[aster.unpack(fornodes)]#
+    elseif res ~= SQLite3.Error.DONE then -- some unexpected error
+      error(sqlite3_errmsg(state.db))
+    end
+    -- finished reading all rows
+    return false, #[aster.unpack(fornodes)]#
+  end
+  return urows_next, state, T(), SQLite3.Stmt{state.stmt}
+end
+
+return SQLite3
