@@ -2,6 +2,8 @@
 Minimal module with helpers for easy work with SQLite3.
 ]]
 
+require 'string'
+
 ----------------------------------------------------------------------------------------------------
 -- Import SQLite3 API
 
@@ -22,6 +24,7 @@ local sqlite3_stmt: type <cimport,nodecl,forwarddecl> = @record{}
 local function sqlite3_prepare_v2(db: *sqlite3, zSql: cstring, nByte: cint, ppStmt: **sqlite3_stmt, pzTail: *cstring): cint <cimport,nodecl> end
 local function sqlite3_column_count(pStmt: *sqlite3_stmt): cint <cimport,nodecl> end
 local function sqlite3_step(a1: *sqlite3_stmt): cint <cimport,nodecl> end
+local function sqlite3_column_double(a1: *sqlite3_stmt, iCol: cint): float64 <cimport,nodecl> end
 local function sqlite3_column_int64(a1: *sqlite3_stmt, iCol: cint): int64 <cimport,nodecl> end
 local function sqlite3_column_text(a1: *sqlite3_stmt, iCol: cint): *cuchar <cimport,nodecl> end
 local function sqlite3_finalize(pStmt: *sqlite3_stmt): cint <cimport,nodecl> end
@@ -109,9 +112,48 @@ function SQLite3.Error.__tostring(errcode: SQLite3.Error): string
   return string.format('SQLite3 Error %d (%s)', errcode, sqlite3_errstr(errcode))
 end
 
+--[[
+Opens (or creates if it does not exist) an SQLite database with name `filename`
+and returns its handle.
+In case of an error, the function returns a closed database, an error code and an error message.
+]]
+function SQLite3.open(filename: string, flags: facultative(int32)): (SQLite3, SQLite3.Error, string)
+  ## if flags.type.is_niltype then
+  local flags: int32 = SQLite3.OpenFlags.READWRITE | SQLite3.OpenFlags.CREATE
+  ## end
+  local db: *sqlite3
+  local status: SQLite3.Error = sqlite3_open_v2(filename, &db, flags, nilptr)
+  if status ~= SQLite3.Error.OK then
+    local errmsg: string
+    if db then
+      errmsg = sqlite3_errmsg(db)
+      sqlite3_close(db)
+    else
+      errmsg = sqlite3_errstr(status)
+    end
+    return SQLite3{}, status, errmsg
+  end
+  return SQLite3{db=db}, status, (@string){}
+end
+
+--[[
+Closes a database.
+All SQL statements prepared using `db:prepare()` should have been finalized before this function is called.
+Returns `sqlite3.OK` on success or else a numerical error code.
+]]
+function SQLite3:close(): (SQLite3.Error, string)
+  assert(self.db, 'attempt to use a closed sqlite database')
+  local res: SQLite3.Error = sqlite3_close(self.db)
+  if res ~= SQLite3.Error.OK then
+    return res, sqlite3_errmsg(self.db)
+  end
+  self.db = nilptr
+  return res, (@string){}
+end
+
 -- Returns true if database is open, false otherwise.
 function SQLite3:isopen(): boolean
-  return self ~= nilptr
+  return self.db ~= nilptr
 end
 
 --[[
@@ -147,45 +189,6 @@ function SQLite3:exec(sql: string,
   return res, errmsg
 end
 
---[[
-Closes a database.
-All SQL statements prepared using `db:prepare()` should have been finalized before this function is called.
-Returns `sqlite3.OK` on success or else a numerical error code.
-]]
-function SQLite3:close(): (SQLite3.Error, string)
-  assert(self.db, 'attempt to use a closed sqlite database')
-  local res: SQLite3.Error = sqlite3_close(self.db)
-  if res ~= SQLite3.Error.OK then
-    return res, sqlite3_errmsg(self.db)
-  end
-  self.db = nilptr
-  return res, (@string){}
-end
-
---[[
-Opens (or creates if it does not exist) an SQLite database with name `filename`
-and returns its handle.
-In case of an error, the function returns a closed database, an error code and an error message.
-]]
-function SQLite3.open(filename: string, flags: facultative(int32)): (SQLite3, SQLite3.Error, string)
-  ## if flags.type.is_niltype then
-  local flags: int32 = SQLite3.OpenFlags.READWRITE | SQLite3.OpenFlags.CREATE
-  ## end
-  local db: *sqlite3
-  local status: SQLite3.Error = sqlite3_open_v2(filename, &db, flags, nilptr)
-  if status ~= SQLite3.Error.OK then
-    local errmsg: string
-    if db then
-      errmsg = string.copy(sqlite3_errmsg(db))
-      sqlite3_close(db)
-    else
-      errmsg = sqlite3_errstr(status)
-    end
-    return SQLite3{}, status, errmsg
-  end
-  return SQLite3{db=db}, status, (@string){}
-end
-
 -- Record used to store state of `urows`.
 local URowsState: type = @record{
   db: *sqlite3,
@@ -197,7 +200,7 @@ Creates an iterator that returns the successive rows selected by the SQL stateme
 Each call to the iterator returns the values that correspond to the columns in the currently selected row.
 Types for each value to be returned by the iterator must be passed in `...`.
 ]]
-function SQLite3:urows(sql: string, ...: varargs): (auto, auto, auto, SQLite3.Stmt)
+function SQLite3:urows(sql: string, ...: varargs): (auto, URowsState, auto, SQLite3.Stmt)
   local state: URowsState = {self.db}
   local res: SQLite3.Error = sqlite3_prepare_v2(state.db, sql, #sql, &state.stmt, nilptr)
   if res ~= SQLite3.Error.OK then
@@ -225,6 +228,8 @@ function SQLite3:urows(sql: string, ...: varargs): (auto, auto, auto, SQLite3.St
           #|'v'..i|# = string.copy((@cstring)(sqlite3_column_text(state.stmt, #[i-1]#)))
         ## elseif fortype.is_integral then
           #|'v'..i|# = sqlite3_column_int64(state.stmt, #[i-1]#)
+        ## elseif fortype.is_float then
+          #|'v'..i|# = sqlite3_column_double(state.stmt, #[i-1]#)
         ## else
           ## static_error("cannot handle type '%s'", fortype)
         ## end
@@ -237,6 +242,12 @@ function SQLite3:urows(sql: string, ...: varargs): (auto, auto, auto, SQLite3.St
     return false, #[aster.unpack(fornodes)]#
   end
   return urows_next, state, T(), SQLite3.Stmt{state.stmt}
+end
+
+-- Like `urows` but only for one row, returns `true if a row is found plus its values.
+function SQLite3:urow(sql: string, ...: varargs)
+  local urows_next, state, k, stmt <close> = self:urows(sql, ...)
+  return urows_next(state, k)
 end
 
 return SQLite3

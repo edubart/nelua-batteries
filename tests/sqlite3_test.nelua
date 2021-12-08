@@ -69,5 +69,11 @@ nester.describe("sqlite3", function()
     expect.equal(count, 2)
   end)
 
+  nester.it("urow", function()
+    local ok: boolean, id: int64 = db:urow("SELECT id FROM names ORDER BY id LIMIT 1", @int64)
+    expect.truthy(ok)
+    expect.equal(id, 1)
+  end)
+
   os.remove('testdb.sqlite3')
 end)
