@@ -1,0 +1,40 @@
+require 'nester'
+require 'algorithm'
+require 'vector'
+
+nester.describe("sqlite3", function()
+  nester.it("sort vector", function()
+    local v: vector(integer) <close> = {2,3,1,4}
+    algorithm.sort(v)
+    for i=1,<#v do
+      expect.truthy(v[i-1] <= v[i])
+    end
+  end)
+
+  nester.it("sort array", function()
+    local a: []integer = {2,3,1,4}
+    algorithm.sort(a)
+    for i=1,<#a do
+      expect.truthy(a[i-1] <= a[i])
+    end
+  end)
+
+  nester.it("sort span", function()
+    local a: []integer = {2,3,1,4}
+    local s: span(integer) = &a
+    algorithm.sort(s)
+    for i=1,<#s do
+      expect.truthy(s[i-1] <= s[i])
+    end
+  end)
+
+  nester.it("custom sort", function()
+    local v: vector(integer) <close> = {2,3,1,4}
+    algorithm.sort(v, function(x: integer, y: integer)
+      return x > y
+    end)
+    for i=1,<#v do
+      expect.truthy(v[i-1] >= v[i])
+    end
+  end)
+end)
