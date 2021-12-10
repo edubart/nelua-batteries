@@ -218,7 +218,7 @@ local function backtrace_create_error_callback(data: pointer, msg: cstring, errn
 end
 
 -- Initialize a global backtrace instance.
-local argv: *[0]cstring <cimport'nelua_argv',nodecl>
+local argv: *[0]cstring <cimport'nelua_argv'>
 
 -- The global backtrace instance.
 global backtrace: *Backtrace = Backtrace.create(argv[0], 0, backtrace_create_error_callback, nilptr)
