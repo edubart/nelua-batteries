@@ -1,0 +1,246 @@
+--[[
+The heap queue library provides an priority queue using binary trees.
+
+Heap queues designed such that its first element is always the smallest of the elements
+it contains, according to some ordering criteria.
+
+It is similar to a heap, where elements can be inserted at any moment,
+and only the minimum heap element is retrieved (the one at the top in the queue).
+]]
+
+require 'iterators'
+
+## local function make_heapqueueT(T, CompareFunc, Allocator)
+  ## static_assert(traits.is_type(T), "invalid type '%s'", T)
+  ## if not Allocator then
+  require 'allocators.default'
+  ## Allocator = DefaultAllocator
+  ## end
+
+  local Allocator: type = #[Allocator]#
+  local T: type = @#[T]#
+
+  -- Heap queue record defined when instantiating the generic `heapqueue` with type `T`.
+  local heapqueueT: type <nickname(#[string.format('heapqueue(%s)', T)]#)> = @record{
+    data: span(T),
+    size: usize,
+    allocator: Allocator
+  }
+
+  ##[[
+  local heapqueueT = heapqueueT.value
+  heapqueueT.is_contiguous = true
+  heapqueueT.is_container = true
+  heapqueueT.is_heapqueue = true
+  heapqueueT.subtype = T
+  ]]
+
+  ## if not CompareFunc then
+    ## function CompareFunc(a, b)
+      in #[a]# < #[b]#
+    ## end
+  ## end
+
+  --[[
+  Creates a heap queue using a custom allocator instance.
+  Useful only when using instanced allocators.
+  ]]
+  function heapqueueT.make(allocator: Allocator): heapqueueT
+    local v: heapqueueT
+    v.allocator = allocator
+    return v
+  end
+
+  --[[
+  Removes all elements from the queue.
+  The internal storage buffer is not freed, and it may be reused.
+  ]]
+  function heapqueueT:clear(): void
+    self.size = 0
+  end
+
+  --[[
+  Free queue resources and resets it to a zeroed state.
+  Useful only when not using the garbage collector.
+  ]]
+  function heapqueueT:destroy(): void
+    self.allocator:spandealloc(self.data)
+    self.data = (@span(T))()
+    self.size = 0
+  end
+
+  -- Effectively the same as `destroy`, called when a to-be-closed variable goes out of scope.
+  function heapqueueT:__close(): void
+    self:destroy()
+  end
+
+  -- Reserve at least `n` elements in the queue storage.
+  function heapqueueT:reserve(n: usize): void
+    if likely(self.data.size >= n) then return end
+    self.data = self.allocator:xspanrealloc(self.data, n)
+  end
+
+  -- Grow queue storage to accommodate at least one more element, used internally.
+  local function heapqueueT_grow(self: *heapqueueT): void <noinline>
+    local cap: usize = 1
+    if likely(self.data.size ~= 0) then
+      cap = self.data.size * 2
+      check(cap > self.data.size, 'capacity overflow')
+    end
+    self.data = self.allocator:xspanrealloc(self.data, cap)
+  end
+
+  -- Shift up queue items in order to maintain the heap property.
+  local function heapqueueT_shiftup(self: *heapqueueT, index: usize): void <inline>
+    while index > 0 do
+      local parent_index: usize = (index - 1) // 2
+      local child: T = self.data[index]
+      local parent: T = self.data[parent_index]
+      if not #[CompareFunc]#(child, parent) then break end
+      self.data[parent_index] = child
+      self.data[index] = parent
+      index = parent_index
+    end
+  end
+
+  -- Shift down queue items in order to maintain the heap property.
+  local function heapqueueT_shiftdown(self: *heapqueueT, index: usize): void <inline>
+    while true do
+      local left_index: usize = 2*index + 1
+      local right_index: usize = left_index + 1
+      local smallest_index: usize = index
+      local smallest: T = self.data[smallest_index]
+      local current: T = smallest
+      if left_index < self.size then
+        local left: T = self.data[left_index]
+        if #[CompareFunc]#(left, smallest) then
+          smallest_index = left_index
+          smallest = left
+        end
+      end
+      if right_index < self.size then
+        local right: T = self.data[right_index]
+        if #[CompareFunc]#(right, smallest) then
+          smallest_index = right_index
+          smallest = right
+        end
+      end
+      if smallest_index == index then return end
+      self.data[smallest_index] = current
+      self.data[index] = smallest
+      index = smallest_index
+    end
+  end
+
+  --[[
+  Inserts element `v` into the queue.
+  Queue elements are shifted in order to maintain the heap property.
+  ]]
+  function heapqueueT:push(v: T): void
+    local newsize: usize = self.size + 1
+    if unlikely(newsize > self.data.size) then
+      heapqueueT_grow(self)
+    end
+    self.data[self.size] = v
+    heapqueueT_shiftup(self, self.size)
+    self.size = newsize
+  end
+
+  --[[
+  Removes element at position `pos` in the queue and returns its value.
+  Queue elements are shifted in order to maintain the heap property.
+  The position `pos` must be valid (within queue bounds).
+  ]]
+  function heapqueueT:remove(pos: usize): T
+    check(pos < self.size, 'position out of bounds')
+    local newsize: usize = self.size - 1
+    local v: T = self.data[pos]
+    self.size = newsize
+    if likely(pos ~= newsize) then
+      self.data[pos] = self.data[newsize]
+      heapqueueT_shiftdown(self, pos)
+      heapqueueT_shiftup(self, pos)
+    end
+    return v
+  end
+
+  --[[
+  Removes the highest priority element in queue, returning its value.
+  Queue elements are shifted in order to maintain the heap property.
+  The heap queue must not be empty.
+  ]]
+  function heapqueueT:pop(): T
+    check(self.size > 0, 'attempt to pop an empty heapqueue')
+    local newsize: usize = self.size - 1
+    self.size = newsize
+    local v: T = self.data[0]
+    if likely(newsize > 0) then
+      self.data[0] = self.data[newsize]
+      heapqueueT_shiftdown(self, 0)
+    end
+    return v
+  end
+
+  -- Returns the number of elements the heap queue can store before triggering a reallocation.
+  function heapqueueT:capacity(): isize <inline>
+    return (@isize)(self.data.size)
+  end
+
+  --[[
+  Returns reference to element at position `pos`.
+  Note that `pos` is not necessarily in priority order.
+  Position `pos` must be valid (within queue bounds).
+  The reference will remain valid until the queue is modified.
+  Used when indexing elements with square brackets (`[]`).
+  ]]
+  function heapqueueT:__atindex(pos: usize): *T <inline,nosideeffect>
+    check(pos < self.size, 'position out of bounds')
+    return &self.data[pos]
+  end
+
+  --[[
+  Returns the number of elements in the queue.
+  Used by the length operator (`#`).
+  ]]
+  function heapqueueT:__len(): isize <inline>
+    return (@isize)(self.size)
+  end
+
+  -- Concept matching fixed arrays of T.
+  local an_arrayT: type = #[concept(function(x)
+    if x.type:is_array_of(T) then
+      return true
+    end
+    return false, string.format("no viable conversion from '%s' to '%s'", x.type, heapqueueT)
+  end, function(node)
+    return node.tag == 'InitList' and types.ArrayType(T, #node)
+  end)]#
+
+  --[[
+  Initializes queue elements from a fixed array.
+  Used to initialize queue elements with curly braces (`{}`).
+  ]]
+  function heapqueueT.__convert(values: an_arrayT): heapqueueT <inline>
+    local self: heapqueueT
+    self:reserve(#values)
+    for i:usize=0,<#values do
+      self:push(values[i])
+    end
+    return self
+  end
+
+  ## return heapqueueT
+## end
+
+--[[
+Generic used to instantiate a heap queue type in the form of `heapqueue(T, CompareFunc, Allocator)`.
+
+Argument `T` is the value type that the queue will store.
+Argument `CompareFunc` is a function to compare `T` values,
+in case absent then the `<` operator is used.
+Argument `Allocator` is an allocator type for the container storage,
+in case absent then `DefaultAllocator` is used.
+]]
+global heapqueue: type = #[generalize(make_heapqueueT)]#
+
+return heapqueue
