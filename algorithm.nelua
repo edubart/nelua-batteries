@@ -87,23 +87,55 @@ Like `algorithm.sort`, however the sort is stable.
 The sort algorithm is stable, that is,
 different elements considered equal by the given order will preserve their relative positions.
 
-Use `sort` instead if you don't need to preserve stability, as it is faster.
+Use `sort` instead if you don't need to preserve stability, as it can be faster.
 ]]
 function algorithm.stablesort(a: sortable_reference_concept, comp: auto): void
-  -- Insertion sort (as in https://en.wikipedia.org/wiki/Insertion_sort)
+  -- Merge sort (as in https://en.wikibooks.org/wiki/Algorithm_Implementation/Sorting/Merge_sort)
   local n: isize = #a
   if n <= 1 then return end
-  local i: isize = 1
-  for i: isize = 1,<n do
-    local x = a[i]
-    local j: isize = i - 1
-    while j >= 0 and #[sort_lt]#(comp, x, a[j]) do
-      a[j+1] = a[j]
-      j = j - 1
+  local T: type = #[a.type.subtype.subtype]#
+  local aux: span(T) = default_allocator:spanalloc(@T, n)
+  local high: isize = n-1
+  local width: isize = 1
+  while width <= high do
+    local left_start: isize = 0
+    while left_start < high do
+      local left_end: isize = left_start + width - 1
+      local right_end: isize = left_end + width
+      if high < right_end then right_end = high end
+      do -- merge
+        local left: isize, right: isize = left_start, left_end+1
+        local i: isize = left_start
+        while left <= left_end and right <= right_end do
+          local value_left: T, value_right: T = a[left], a[right]
+          if #[sort_lt]#(comp, value_right, value_left) then
+            aux[i] = value_right
+            right = right + 1
+          else
+            aux[i] = value_left
+            left = left + 1
+          end
+          i = i + 1
+        end
+        while left <= left_end do
+          aux[i] = a[left]
+          i = i + 1
+          left = left + 1
+        end
+        while right <= right_end do
+          aux[i] = a[right]
+          i = i + 1
+          right = right + 1
+        end
+        for j: isize=left_start,right_end do
+          a[j] = aux[j]
+        end
+      end
+      left_start = left_start + width * 2
     end
-    a[j+1] = x
-    i = i + 1
+    width = width * 2
   end
+  default_allocator:spandealloc(aux)
 end
 
 return algorithm
