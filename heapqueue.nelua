@@ -106,23 +106,23 @@ require 'iterators'
   -- Shift down queue items in order to maintain the heap property.
   local function heapqueueT_shiftdown(self: *heapqueueT, index: usize): void <inline>
     while true do
-      local left_index: usize = 2*index + 1
-      local right_index: usize = left_index + 1
       local smallest_index: usize = index
-      local smallest: T = self.data[smallest_index]
-      local current: T = smallest
+      local current: T = self.data[smallest_index]
+      local smallest: T = current
+      local left_index: usize = 2*index + 1
       if left_index < self.size then
         local left: T = self.data[left_index]
         if #[CompareFunc]#(left, smallest) then
           smallest_index = left_index
           smallest = left
         end
-      end
-      if right_index < self.size then
-        local right: T = self.data[right_index]
-        if #[CompareFunc]#(right, smallest) then
-          smallest_index = right_index
-          smallest = right
+        local right_index: usize = left_index + 1
+        if right_index < self.size then
+          local right: T = self.data[right_index]
+          if #[CompareFunc]#(right, smallest) then
+            smallest_index = right_index
+            smallest = right
+          end
         end
       end
       if smallest_index == index then return end
