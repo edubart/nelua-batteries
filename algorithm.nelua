@@ -50,12 +50,20 @@ function algorithm.sort(a: sortable_reference_concept, comp: auto): void
   -- Tim Sort
   local T: type = #[a.type.subtype.subtype]#
   local n: isize = #a
-  local high: isize = n-1
   if n <= 1 then return end
-  local RUN: isize <comptime> = 32
+  local run: isize = 0
+  do -- calculate run
+    local m: isize = n
+    while m >= 64 do
+      run = run | (m & 1)
+      m = m >> 1
+    end
+    run = run + m
+  end
   -- Insertion Sort
-  for left: isize=0,high,RUN do
-    local right: isize = left+RUN-1
+  local high: isize = n-1
+  for left: isize=0,high,run do
+    local right: isize = left+run-1
     if high < right then right = high end
     for i: isize = left + 1,right do
       local x: T = a[i]
@@ -67,15 +75,16 @@ function algorithm.sort(a: sortable_reference_concept, comp: auto): void
       a[j+1] = x
     end
   end
-  -- Merge sort
+  -- Merge Sort
+  if run > high then return end
   local aux: span(T) = default_allocator:spanalloc(@T, n)
-  local width: isize = RUN
+  local width: isize = run
   while width <= high do
     local left_start: isize = 0
     while left_start < high do
       local left_end: isize = left_start + width - 1
+      local right_end: isize = left_end + width
       if high < left_end then left_end = high end
-      local right_end: isize = left_start + 2*width - 1
       if high < right_end then right_end = high end
       do -- merge
         local left: isize, right: isize = left_start, left_end+1
@@ -105,9 +114,9 @@ function algorithm.sort(a: sortable_reference_concept, comp: auto): void
           a[j] = aux[j]
         end
       end
-      left_start = left_start + width * 2
+      left_start = left_start + width + width
     end
-    width = width * 2
+    width = width + width
   end
   default_allocator:spandealloc(aux)
 end
