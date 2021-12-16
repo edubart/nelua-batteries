@@ -38,17 +38,17 @@ nester.describe("algorithm", function()
     end
   end)
 
-  nester.it("stable sort", function()
+  nester.it("heapsort", function()
     local v: vector(integer) <close> = {3,1,4,2,5,6}
-    algorithm.stablesort(v)
+    algorithm.heapsort(v)
     for i=1,<#v do
       expect.truthy(v[i-1] <= v[i])
     end
   end)
 
-  nester.it("custom stable sort", function()
+  nester.it("custom heapsort", function()
     local v: vector(integer) <close> = {3,1,4,2,5,6}
-    algorithm.stablesort(v, function(x: integer, y: integer)
+    algorithm.heapsort(v, function(x: integer, y: integer)
       return x > y
     end)
     for i=1,<#v do

@@ -32,76 +32,50 @@ end)]#
 ## end
 
 --[[
-Sorts all contiguous container `a` elements into ascending order (in-place).
+Sorts contiguous container `a` elements into ascending order.
 
 If `comp` is given, then it must be a function that receives two list elements
 and returns true when the first element must come before the second in the final order,
 so that, after the sort, `i <= j` implies `not comp(a[j],a[i])`.
 If `comp` is not given, then the standard operator `<` is used instead.
 
-The `comp` function must define a consistent order;
-more formally, the function must define a strict weak order.
-
-The sort algorithm is not stable, that is,
-different elements considered equal by the given order may have their
-relative positions changed by the sort.
-]]
-function algorithm.sort(a: sortable_reference_concept, comp: auto): void
-  -- Heap sort (as in http://en.wikibooks.org/wiki/Algorithm_implementation/Sorting/Heapsort)
-  local n: isize = #a
-  if n <= 1 then return end
-  local i: isize = n // 2
-  local parent: isize, child: isize
-  local t
-  while true do
-    if i > 0 then
-      i = i - 1
-      t = a[i]
-    else
-      n = n -1
-      if n <= 0 then return end
-      t = a[n]
-      a[n] = a[0]
-    end
-    parent = i
-    child = i * 2 + 1
-    while child < n do
-      if child + 1 < n and #[sort_lt]#(comp, a[child], a[child + 1]) then
-        child = child + 1
-      end
-      if #[sort_lt]#(comp, t, a[child]) then
-        a[parent] = a[child]
-        parent = child
-        child = parent * 2 + 1
-      else
-        break
-      end
-    end
-    a[parent] = t
-  end
-end
-
---[[
-Like `algorithm.sort`, however the sort is stable.
-
 The sort algorithm is stable, that is,
 different elements considered equal by the given order will preserve their relative positions.
 
-Use `sort` instead if you don't need to preserve stability, as it can be faster.
+The sort algorithm is not in-place, that is,
+it allocates an auxiliary buffer temporarily to perform the sort operation,
+use `heapsort` if you wish to avoid that.
 ]]
-function algorithm.stablesort(a: sortable_reference_concept, comp: auto): void
-  -- Merge sort (as in https://en.wikibooks.org/wiki/Algorithm_Implementation/Sorting/Merge_sort)
-  local n: isize = #a
-  if n <= 1 then return end
+function algorithm.sort(a: sortable_reference_concept, comp: auto): void
+  -- Tim Sort
   local T: type = #[a.type.subtype.subtype]#
-  local aux: span(T) = default_allocator:spanalloc(@T, n)
+  local n: isize = #a
   local high: isize = n-1
-  local width: isize = 1
+  if n <= 1 then return end
+  local RUN: isize <comptime> = 32
+  -- Insertion Sort
+  for left: isize=0,high,RUN do
+    local right: isize = left+RUN-1
+    if high < right then right = high end
+    for i: isize = left + 1,right do
+      local x: T = a[i]
+      local j: isize = i - 1
+      while j >= left and #[sort_lt]#(comp, x, a[j]) do
+        a[j+1] = a[j]
+        j = j - 1
+      end
+      a[j+1] = x
+    end
+  end
+  -- Merge sort
+  local aux: span(T) = default_allocator:spanalloc(@T, n)
+  local width: isize = RUN
   while width <= high do
     local left_start: isize = 0
     while left_start < high do
       local left_end: isize = left_start + width - 1
-      local right_end: isize = left_end + width
+      if high < left_end then left_end = high end
+      local right_end: isize = left_start + 2*width - 1
       if high < right_end then right_end = high end
       do -- merge
         local left: isize, right: isize = left_start, left_end+1
@@ -136,6 +110,49 @@ function algorithm.stablesort(a: sortable_reference_concept, comp: auto): void
     width = width * 2
   end
   default_allocator:spandealloc(aux)
+end
+
+--[[
+Like `sort` but the operation is done in-place, that is, no temporary extra memory is allocated.
+Sorts all contiguous container `a` elements into ascending order (in-place).
+
+The sort algorithm is not stable, that is,
+different elements considered equal by the given order may have their
+relative positions changed by the sort.
+]]
+function algorithm.heapsort(a: sortable_reference_concept, comp: auto): void
+  -- Heap sort (as in http://en.wikibooks.org/wiki/Algorithm_implementation/Sorting/Heapsort)
+  local n: isize = #a
+  if n <= 1 then return end
+  local i: isize = n // 2
+  local parent: isize, child: isize
+  local t
+  while true do
+    if i > 0 then
+      i = i - 1
+      t = a[i]
+    else
+      n = n -1
+      if n <= 0 then return end
+      t = a[n]
+      a[n] = a[0]
+    end
+    parent = i
+    child = i * 2 + 1
+    while child < n do
+      if child + 1 < n and #[sort_lt]#(comp, a[child], a[child + 1]) then
+        child = child + 1
+      end
+      if #[sort_lt]#(comp, t, a[child]) then
+        a[parent] = a[child]
+        parent = child
+        child = parent * 2 + 1
+      else
+        break
+      end
+    end
+    a[parent] = t
+  end
 end
 
 return algorithm
