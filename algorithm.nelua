@@ -48,77 +48,80 @@ use `heapsort` if you wish to avoid that.
 function algorithm.sort(a: sortable_reference_concept, comp: auto): void
   -- Tim Sort
   local T: type = #[a.type.subtype.subtype]#
-  local n: isize = #a
+  local n: usize = #a
   if n <= 1 then return end
-  local run: isize = 0
-  do -- calculate run
-    local m: isize = n
+  local width: usize = 0
+  do -- calculate width (minrun)
+    local m: usize = n
     while m >= 64 do
-      run = run | (m & 1)
+      width = width | (m & 1)
       m = m >> 1
     end
-    run = run + m
+    width = width + m
   end
   -- Insertion Sort
-  local high: isize = n-1
-  for left: isize=0,high,run do
-    local right: isize = left+run-1
+  local high: usize = n-1
+  for left: usize=0,<=high,width do
+    local right: usize = left+width-1
     if high < right then right = high end
-    for i: isize = left + 1,right do
+    for i: usize = left + 1,right do
       local x: T = a[i]
-      local j: isize = i - 1
-      while j >= left and #[sort_lt]#(comp, x, a[j]) do
-        a[j+1] = a[j]
+      local j: usize = i
+      while j >= left+1 and #[sort_lt]#(comp, x, a[j-1]) do
+        a[j] = a[j-1]
         j = j - 1
       end
-      a[j+1] = x
+      a[j] = x
     end
   end
   -- Merge Sort
-  if run > high then return end
-  local aux: span(T) = general_allocator:spanalloc(@T, n)
-  local width: isize = run
+  if width > high then return end
+  local temp: span(T) = general_allocator:spanalloc(@T, n)
   while width <= high do
-    local left_start: isize = 0
-    while left_start < high do
-      local left_end: isize = left_start + width - 1
-      local right: isize = left_end + 1
+    local i: usize = 0
+    while i < high do
+      local left_end: usize = i + width - 1
+      local right: usize = left_end + 1
       if right > high then break end
-      local right_end: isize = left_end + width
-      if right_end > high then right_end = high end
       do -- merge
-        local left: isize = left_start
-        local i: isize = left_start
-        while left <= left_end and right <= right_end do
-          local value_left: T, value_right: T = a[left], a[right]
-          if #[sort_lt]#(comp, value_right, value_left) then
-            aux[i] = value_right
-            right = right + 1
-          else
-            aux[i] = value_left
-            left = left + 1
-          end
-          i = i + 1
+        local left_start: usize = i
+        -- advance left start to do less left copy (optimization)
+        while left_start <= left_end and not #[sort_lt]#(comp, a[right], a[left_start]) do
+          left_start = left_start + 1
         end
-        while left <= left_end do
-          aux[i] = a[left]
-          i = i + 1
-          left = left + 1
-        end
-        while right <= right_end do
-          aux[i] = a[right]
-          i = i + 1
+        if left_start <= left_end then -- perform merge only if unsorted (optimization)
+          temp[left_start] = a[right]
           right = right + 1
-        end
-        for j: isize=left_start,right_end do
-          a[j] = aux[j]
+          local left: usize = left_start
+          local index: usize = left_start + 1
+          local right_end: usize = left_end + width
+          if right_end > high then right_end = high end
+          while left <= left_end and right <= right_end do
+            if #[sort_lt]#(comp, a[right], a[left]) then
+              temp[index] = a[right]
+              right = right + 1
+            else
+              temp[index] = a[left]
+              left = left + 1
+            end
+            index = index + 1
+          end
+          while left <= left_end do
+            temp[index] = a[left]
+            left = left + 1
+            index = index + 1
+          end
+          -- note that we have skip unnecessary right copy (optimization)
+          for j: usize=left_start,<right do
+            a[j] = temp[j]
+          end
         end
       end
-      left_start = left_start + width + width
+      i = i + width + width
     end
     width = width + width
   end
-  general_allocator:spandealloc(aux)
+  general_allocator:spandealloc(temp)
 end
 
 --[[
