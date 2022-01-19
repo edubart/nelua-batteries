@@ -39,6 +39,8 @@ require 'iterators'
     ## function CompareFunc(a, b)
       in #[a]# < #[b]#
     ## end
+  ## elseif CompareFunc.is_generic then
+    ## CompareFunc = CompareFunc.func
   ## end
 
   --[[
@@ -179,6 +181,12 @@ require 'iterators'
       heapqueueT_shiftdown(self, 0)
     end
     return v
+  end
+
+  -- Returns the value of the highest priority element in queue.
+  function heapqueueT:top(): T
+    check(self.size > 0, 'attempt to access top of an empty heapqueue')
+    return self.data[0]
   end
 
   -- Returns the number of elements the heap queue can store before triggering a reallocation.
