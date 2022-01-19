@@ -188,8 +188,10 @@ function nester.describe(name: string, func: function()): void
   -- run the describe block
   func()
   -- cleanup describe block
-  afters:pop()
-  befores:pop()
+  local seq = afters:pop()
+  seq:destroy()
+  seq = befores:pop()
+  seq:destroy()
   names:pop()
   level = level - 1
   -- pretty print statistics for top level describe block
@@ -381,7 +383,7 @@ function expect.falsy(v: boolean): void <alwayspoly>
   if v then
     last_error_filename = #[polysrcloc.srcname or '']#
     last_error_lineno = #[polysrcloc.lineno or 0]#
-    error('expected expression to be true, but got true', 0)
+    error('expected expression to be false, but got true', 0)
   end
 end
 
