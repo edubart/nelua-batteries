@@ -167,4 +167,21 @@ function algorithm.heapsort(a: sortable_reference_concept, comp: auto): void
   end
 end
 
+function algorithm.removeif(a: sortable_reference_concept, pred: auto, param: auto): usize
+  local j: usize = 0
+  local n: usize = (@usize)(#a)
+  for i:usize=0,<(@usize)(#a) do
+    ## if param.type.is_niltype then
+    local remove = pred(a[i])
+    ## else
+    local remove = pred(a[i], param)
+    ## end
+    if not remove then
+      a[j], a[i] = a[i], a[j]
+      j = j + 1
+    end
+  end
+  return j
+end
+
 return algorithm
