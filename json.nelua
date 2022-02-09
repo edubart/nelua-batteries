@@ -313,3 +313,5 @@ function json.emit(obj: auto, sb: facultative(*stringbuilder))
   return sb:promote()
   ## end
 end
+
+return json

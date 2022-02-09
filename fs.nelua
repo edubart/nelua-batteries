@@ -502,3 +502,5 @@ TODO:
 * `walkdir` iterator to walk over all entries from a directory
 * convert system error codes to library error codes
 ]]
+
+return fs

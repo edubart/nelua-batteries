@@ -93,6 +93,8 @@ function ffi:unload(): boolean
   return ok
 end
 
+return ffi
+
 --[[
 MIT License
 
