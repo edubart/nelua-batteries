@@ -1,0 +1,33 @@
+--[[
+The inspector module.
+
+This module it's a function that receives anything and
+returns the whole content of the passed value as a string.
+]]
+
+require 'string'
+local stringbuilder = require 'stringbuilder'
+
+-- meta-utils
+##[[
+local function is_simple_primitive(type)
+  return type.is_boolean or type.is_scalar or type.is_stringy
+end
+]]
+
+-- concepts
+local a_simple_primitive: type = #[concept(function(attr)
+  return is_simple_primitive(attr.type)
+end)]#
+
+-- more specialized inspector functions
+local function inspect_simple(value: a_simple_primitive): string
+  return tostring(value)
+end
+
+-- the inspector module
+global function inspector(value: auto): string
+  ## if is_simple_primitive(value.type) then
+    return inspect_simple(value)
+  ## end
+end

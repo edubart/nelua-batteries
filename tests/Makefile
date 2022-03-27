@@ -7,7 +7,8 @@ test: \
 	test-json \
 	test-ffi \
 	test-backtrace \
-	test-nester
+	test-nester \
+	test-inspector
 
 test-fs:
 	$(NELUARUN) fs_test.nelua
@@ -24,3 +25,6 @@ test-ffi:
 
 test-nester:
 	$(NELUARUN) nester_test.nelua
+
+test-inspector:
+	$(NELUARUN) inspector_test.nelua

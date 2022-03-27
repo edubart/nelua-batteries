@@ -1,0 +1,37 @@
+require 'inspector'
+require 'nester'
+
+nester.describe("inspector", function()
+  nester.describe("primitives", function()
+    nester.describe("simple", function()
+      nester.it("booleans", function()
+        local result <close> = inspector(true)
+        expect.equal(result, "true")
+
+        local result <close> = inspector(false)
+        expect.equal(result, "false")
+      end)
+
+      nester.it("integers", function()
+        local result <close> = inspector(10)
+        expect.equal(result, "10")
+      end)
+
+      nester.it("numbers", function()
+        local result <close> = inspector(20.20)
+        expect.equal(result, "20.2")
+
+        local result <close> = inspector(30_number)
+        expect.equal(result, "30.0")
+      end)
+
+      nester.it("strings", function()
+        local result <close> = inspector("hello world!")
+        expect.equal(result, "hello world!")
+
+        local result <close> = inspector("(cstring) hello world!"_cstring)
+        expect.equal(result, "(cstring) hello world!")
+      end)
+    end)
+  end)
+end)
