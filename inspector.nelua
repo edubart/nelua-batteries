@@ -20,14 +20,38 @@ local a_simple_primitive: type = #[concept(function(attr)
   return is_simple_primitive(attr.type)
 end)]#
 
+local a_array = #[concept(function(attr)
+  return attr.type.is_array
+end)]#
+
 -- more specialized inspector functions
 local function inspect_simple(value: a_simple_primitive): string
   return tostring(value)
+end
+
+local function inspect_array(value: a_array): string
+  local sb: stringbuilder <close>
+
+  sb:writef("(@%s){ ", #[tostring(value.type)]#)
+
+  for i = 0, < #value do
+    if i < #value - 1 then
+      sb:write(value[i], ', ')
+    else
+      sb:write(value[i])
+    end
+  end
+
+  sb:write(" }")
+
+  return tostring(sb)
 end
 
 -- the inspector module
 global function inspector(value: auto): string
   ## if is_simple_primitive(value.type) then
     return inspect_simple(value)
+  ## elseif value.type.is_array then
+    return inspect_array(value)
   ## end
 end

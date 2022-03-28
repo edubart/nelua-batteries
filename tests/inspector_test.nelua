@@ -33,5 +33,29 @@ nester.describe("inspector", function()
         expect.equal(result, "(cstring) hello world!")
       end)
     end)
+
+    nester.describe("arrays", function()
+      nester.it("boolean arrays", function()
+        local result <close> = inspector((@array(boolean, 3)){true, false, false})
+        expect.equal(result, "(@array(boolean, 3)){ true, false, false }")
+
+        -- using syntax sugar
+        local result <close> = inspector((@[2]boolean){false, true})
+        expect.equal(result, "(@array(boolean, 2)){ false, true }")
+      end)
+
+      nester.it("scalar arrays", function()
+        local result <close> = inspector((@array(uint16, 3)){3, 4, 5})
+        expect.equal(result, "(@array(uint16, 3)){ 3, 4, 5 }")
+
+        -- using syntax sugar
+        local result <close> = inspector((@[2]integer){1, 2})
+        expect.equal(result, "(@array(int64, 2)){ 1, 2 }")
+
+        -- inferred size
+        local result <close> = inspector((@[]number){-3, -2})
+        expect.equal(result, "(@array(float64, 2)){ -3.0, -2.0 }")
+      end)
+    end)
   end)
 end)
