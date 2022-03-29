@@ -16,13 +16,9 @@ end
 ]]
 
 -- concepts
-local a_simple_primitive: type = #[concept(function(attr)
-  return is_simple_primitive(attr.type)
-end)]#
-
-local a_array = #[concept(function(attr)
-  return attr.type.is_array
-end)]#
+local a_simple_primitive: type = #[concept(function(attr) return is_simple_primitive(attr.type) end)]#
+local a_array = #[concept(function(attr) return attr.type.is_array end)]#
+local a_enum_value = #[concept(function(attr) return attr.type.is_enum end)]#
 
 -- more specialized inspector functions
 local function inspect_simple(value: a_simple_primitive): string
@@ -47,11 +43,34 @@ local function inspect_array(value: a_array): string
   return tostring(sb)
 end
 
+-- TODO: needs serious improvement
+local function inspect_enum_value(value: a_enum_value): string
+  local sb: stringbuilder <close>
+
+  sb:write(#[tostring(value.type) .. '.']#)
+
+  -- Note: this unrolls various `if`s, just to find and write to sb the right enum field
+  -- correspondent to the value
+  ## for _, field in ipairs(value.type.fields) do
+    if value == #[field.value]# then
+      sb:write(#[field.name]#)
+    end
+  ## end
+
+  sb:writef(#[' --[[ = %d_'.. tostring(value.type.subtype) ..' ]]']#, value)
+
+  return tostring(sb)
+end
+
 -- the inspector module
 global function inspector(value: auto): string
-  ## if is_simple_primitive(value.type) then
-    return inspect_simple(value)
+  ## if value.type.is_enum then
+    return inspect_enum_value(value)
+
   ## elseif value.type.is_array then
     return inspect_array(value)
+
+  ## elseif is_simple_primitive(value.type) then
+    return inspect_simple(value)
   ## end
 end

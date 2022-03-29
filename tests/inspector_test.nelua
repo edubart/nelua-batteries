@@ -57,5 +57,33 @@ nester.describe("inspector", function()
         expect.equal(result, "(@array(float64, 2)){ -3.0, -2.0 }")
       end)
     end)
+
+    nester.it("enums", function()
+      local Weeks = @enum{
+        Sunday = 0,
+        Monday,
+        Tuesday,
+        Wednesday,
+        Thursday,
+        Friday,
+        Saturday
+      }
+
+      local ByteWeeks = @enum(byte){
+        Sunday = 0,
+        Monday,
+        Tuesday,
+        Wednesday,
+        Thursday,
+        Friday,
+        Saturday
+      }
+
+      local result <close> = inspector(Weeks.Tuesday)
+      expect.equal(result, "Weeks.Tuesday --[[ = 2_int64 ]]")
+
+      local result <close> = inspector(ByteWeeks.Friday)
+      expect.equal(result, "ByteWeeks.Friday --[[ = 5_uint8 ]]")
+    end)
   end)
 end)
