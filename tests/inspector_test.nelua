@@ -14,15 +14,15 @@ nester.describe("inspector", function()
 
       nester.it("integers", function()
         local result <close> = inspector(10)
-        expect.equal(result, "10")
+        expect.equal(result, "10_i64")
       end)
 
       nester.it("numbers", function()
         local result <close> = inspector(20.20)
-        expect.equal(result, "20.2")
+        expect.equal(result, "20.2_f64")
 
         local result <close> = inspector(30_number)
-        expect.equal(result, "30.0")
+        expect.equal(result, "30.0_f64")
       end)
 
       nester.it("strings", function()
@@ -31,30 +31,6 @@ nester.describe("inspector", function()
 
         local result <close> = inspector("(cstring) hello world!"_cstring)
         expect.equal(result, "(cstring) hello world!")
-      end)
-    end)
-
-    nester.describe("arrays", function()
-      nester.it("boolean arrays", function()
-        local result <close> = inspector((@array(boolean, 3)){true, false, false})
-        expect.equal(result, "(@array(boolean, 3)){ true, false, false }")
-
-        -- using syntax sugar
-        local result <close> = inspector((@[2]boolean){false, true})
-        expect.equal(result, "(@array(boolean, 2)){ false, true }")
-      end)
-
-      nester.it("scalar arrays", function()
-        local result <close> = inspector((@array(uint16, 3)){3, 4, 5})
-        expect.equal(result, "(@array(uint16, 3)){ 3, 4, 5 }")
-
-        -- using syntax sugar
-        local result <close> = inspector((@[2]integer){1, 2})
-        expect.equal(result, "(@array(int64, 2)){ 1, 2 }")
-
-        -- inferred size
-        local result <close> = inspector((@[]number){-3, -2})
-        expect.equal(result, "(@array(float64, 2)){ -3.0, -2.0 }")
       end)
     end)
 
@@ -80,10 +56,35 @@ nester.describe("inspector", function()
       }
 
       local result <close> = inspector(Weeks.Tuesday)
-      expect.equal(result, "Weeks.Tuesday --[[ = 2_int64 ]]")
+      expect.equal(result, "Weeks.Tuesday --[[ = 2_i64 ]]")
 
       local result <close> = inspector(ByteWeeks.Friday)
-      expect.equal(result, "ByteWeeks.Friday --[[ = 5_uint8 ]]")
+      expect.equal(result, "ByteWeeks.Friday --[[ = 5_u8 ]]")
     end)
+
+    nester.describe("arrays", function()
+      nester.it("boolean arrays", function()
+        local result <close> = inspector((@array(boolean, 3)){true, false, false})
+        expect.equal(result, "(@array(boolean, 3)){ true, false, false }")
+
+        -- using syntax sugar
+        local result <close> = inspector((@[2]boolean){false, true})
+        expect.equal(result, "(@array(boolean, 2)){ false, true }")
+      end)
+
+      nester.it("scalar arrays", function()
+        local result <close> = inspector((@array(uint16, 3)){3, 4, 5})
+        expect.equal(result, "(@array(uint16, 3)){ 3_u16, 4_u16, 5_u16 }")
+
+        -- using syntax sugar
+        local result <close> = inspector((@[2]integer){1, 2})
+        expect.equal(result, "(@array(int64, 2)){ 1_i64, 2_i64 }")
+
+        -- inferred size
+        local result <close> = inspector((@[]number){-3, -2})
+        expect.equal(result, "(@array(float64, 2)){ -3.0_f64, -2.0_f64 }")
+      end)
+    end)
+
   end)
 end)

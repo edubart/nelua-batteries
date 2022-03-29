@@ -13,37 +13,48 @@ local stringbuilder = require 'stringbuilder'
 local function is_simple_primitive(type)
   return type.is_boolean or type.is_scalar or type.is_stringy
 end
+
+local short_suffixes = {
+  integer = '_i',
+  uinteger = '_u',
+  number = '_n',
+  byte = '_b',
+  isize = '_is',
+  int8 = '_i8',
+  int16 = '_i16',
+  int32 = '_i32',
+  int64 = '_i64',
+  int128 = '_i128',
+  usize = '_us',
+  uint8 = '_u8',
+  uint16 = '_u16',
+  uint32 = '_u32',
+  uint64 = '_u64',
+  uint128 = '_u128',
+  float32 = '_f32',
+  float64 = '_f64',
+  float128 = '_f128',
+}
 ]]
 
 -- concepts
 local a_simple_primitive: type = #[concept(function(attr) return is_simple_primitive(attr.type) end)]#
 local a_array = #[concept(function(attr) return attr.type.is_array end)]#
 local a_enum_value = #[concept(function(attr) return attr.type.is_enum end)]#
+local a_non_aggregate = #[concept(function(attr) return not attr.type.is_aggregate end)]#
 
 -- more specialized inspector functions
-local function inspect_simple(value: a_simple_primitive): string
-  return tostring(value)
+local function inspect_simple_value(value: a_simple_primitive): string
+  ## local type_suffix = short_suffixes[value.type.name]
+
+  ## if type_suffix then
+    local value_str <close> = tostring(value)
+    return value_str .. #[type_suffix]#
+  ## else
+    return tostring(value)
+  ## end
 end
 
-local function inspect_array(value: a_array): string
-  local sb: stringbuilder <close>
-
-  sb:writef("(@%s){ ", #[tostring(value.type)]#)
-
-  for i = 0, < #value do
-    if i < #value - 1 then
-      sb:write(value[i], ', ')
-    else
-      sb:write(value[i])
-    end
-  end
-
-  sb:write(" }")
-
-  return tostring(sb)
-end
-
--- TODO: needs serious improvement
 local function inspect_enum_value(value: a_enum_value): string
   local sb: stringbuilder <close>
 
@@ -57,20 +68,61 @@ local function inspect_enum_value(value: a_enum_value): string
     end
   ## end
 
-  sb:writef(#[' --[[ = %d_'.. tostring(value.type.subtype) ..' ]]']#, value)
+  sb:writef(#[' --[[ = %d'.. short_suffixes[value.type.subtype.name] ..' ]]']#, value)
 
   return tostring(sb)
 end
 
--- the inspector module
-global function inspector(value: auto): string
+local function non_aggregate_value(value: a_non_aggregate): string
   ## if value.type.is_enum then
     return inspect_enum_value(value)
 
-  ## elseif value.type.is_array then
-    return inspect_array(value)
-
   ## elseif is_simple_primitive(value.type) then
-    return inspect_simple(value)
+    return inspect_simple_value(value)
+
   ## end
+end
+
+local function inspect_array(value: a_array): string
+  local sb: stringbuilder <close>
+
+  sb:write(#['(@' .. tostring(value.type) .. '){ ']#)
+
+  for i = 0, < #value do
+    local value_str <close> = (do
+      ## if not value.type.subtype.is_aggregate then
+        in non_aggregate_value(value[i])
+      ## else
+        in 'TODO'
+      ## end
+    end)
+
+    if i < #value - 1 then
+      sb:write(value_str, ', ')
+    else
+      sb:write(value_str)
+    end
+  end
+
+  sb:write(" }")
+
+  return tostring(sb)
+end
+
+
+-- the inspector module
+global function inspector(value: auto): string
+  ## if not value.type.is_aggregate then
+    return non_aggregate_value(value)
+
+  ## else
+    ## if value.type.is_string then
+      return inspect_simple_value(value)
+
+    ## elseif value.type.is_array then
+      return inspect_array(value)
+    ## end
+  ## end
+
+  return 'Unknown'
 end
