@@ -86,5 +86,23 @@ nester.describe("inspector", function()
       end)
     end)
 
+    nester.describe("records", function()
+      nester.it("simple", function()
+        local SimpleRec = @record{
+          a: integer,
+          b: number
+        }
+
+        local result <close> = inspector((@SimpleRec){ 10, 20.20 })
+        expect.equal(result, #[
+          table.concat({
+            '(@SimpleRec){',
+            '  a = 10_i64,',
+            '  b = 20.2_f64,' ,
+            '}'
+          }, '\n')
+        ]#)
+      end)
+    end)
   end)
 end)

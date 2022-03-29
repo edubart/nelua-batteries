@@ -41,6 +41,7 @@ local short_suffixes = {
 local a_simple_primitive: type = #[concept(function(attr) return is_simple_primitive(attr.type) end)]#
 local a_array = #[concept(function(attr) return attr.type.is_array end)]#
 local a_enum_value = #[concept(function(attr) return attr.type.is_enum end)]#
+local a_record_value = #[concept(function(attr) return attr.type.is_record end)]#
 local a_non_aggregate = #[concept(function(attr) return not attr.type.is_aggregate end)]#
 
 -- more specialized inspector functions
@@ -109,6 +110,30 @@ local function inspect_array(value: a_array): string
   return tostring(sb)
 end
 
+local function inspect_record_value(value: a_record_value): string
+  local sb: stringbuilder <close>
+
+  sb:write(#['(@' .. tostring(value.type) .. '){\n']#)
+
+  ## for _, field in ipairs(value.type.fields) do
+    ## local indentation = '  '
+    sb:write(#[indentation .. field.name .. ' = ']#)
+
+    local value_str <close> = (do
+      ## if not field.type.is_aggregate then
+        in non_aggregate_value(value.#|field.name|#)
+      ## else
+        in 'TODO'
+      ## end
+    end)
+
+    sb:write(value_str, ',\n')
+  ## end
+
+  sb:write('}')
+
+  return tostring(sb)
+end
 
 -- the inspector module
 global function inspector(value: auto): string
@@ -118,6 +143,9 @@ global function inspector(value: auto): string
   ## else
     ## if value.type.is_string then
       return inspect_simple_value(value)
+
+    ## elseif value.type.is_record then
+      return inspect_record_value(value)
 
     ## elseif value.type.is_array then
       return inspect_array(value)
