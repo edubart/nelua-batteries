@@ -45,10 +45,10 @@ local a_record_value = #[concept(function(attr) return attr.type.is_record end)]
 local a_non_aggregate = #[concept(function(attr) return not attr.type.is_aggregate end)]#
 
 -- more specialized inspector functions
-local function inspect_simple_value(value: a_simple_primitive): string
+local function inspect_simple_value(value: a_simple_primitive, use_suffix: boolean <comptime>): string
   ## local type_suffix = short_suffixes[value.type.name]
 
-  ## if type_suffix then
+  ## if type_suffix and use_suffix.value then
     local value_str <close> = tostring(value)
     return value_str .. #[type_suffix]#
   ## else
@@ -74,81 +74,115 @@ local function inspect_enum_value(value: a_enum_value): string
   return tostring(sb)
 end
 
-local function non_aggregate_value(value: a_non_aggregate): string
+local function non_aggregate_value(value: a_non_aggregate, use_suffix: boolean <comptime>): string
   ## if value.type.is_enum then
     return inspect_enum_value(value)
 
   ## elseif is_simple_primitive(value.type) then
-    return inspect_simple_value(value)
-
+    return inspect_simple_value(value, use_suffix)
   ## end
 end
 
-local function inspect_array(value: a_array): string
-  local sb: stringbuilder <close>
+## local function MACRO_inspect_array_value(value, inspect_array_value_fn_name)
+  do
+    local sb: stringbuilder <close>
 
-  sb:write(#['(@' .. tostring(value.type) .. '){ ']#)
+    sb:write(#['(@' .. tostring(value.type) .. '){ ']#)
 
-  for i = 0, < #value do
-    local value_str <close> = (do
-      ## if not value.type.subtype.is_aggregate then
-        in non_aggregate_value(value[i])
-      ## else
-        in 'TODO'
-      ## end
-    end)
+    for i = 0, < #(#[value]#) do
+      local value_str <close> = (do
+        ## if not value.type.subtype.is_aggregate then
+          in non_aggregate_value(#[value]#[i], false)
 
-    if i < #value - 1 then
-      sb:write(value_str, ', ')
-    else
-      sb:write(value_str)
+        ## elseif value.type.subtype.is_array then
+            in #|inspect_array_value_fn_name|#(#[value]#[i])
+
+        ## elseif value.type.subtype.is_record then
+          in inspect_record_value(#[value]#[i], 0, false)
+
+        ## else
+          in 'TODO'
+        ## end
+      end)
+
+      if i < #value - 1 then
+        sb:write(value_str, ', ')
+      else
+        sb:write(value_str)
+      end
     end
+
+    sb:write(" }")
+
+    MACRO_str_result = tostring(sb)
+  end
+## end
+
+local function inspect_record_value(value: a_record_value, level: integer, use_type_prefix: boolean): string
+  local function inspect_array_value(value: a_array): string
+    local MACRO_str_result: string
+    MACRO_inspect_array_value!(value, 'inspect_array_value')
+    return MACRO_str_result
   end
 
-  sb:write(" }")
-
-  return tostring(sb)
-end
-
-local function inspect_record_value(value: a_record_value): string
   local sb: stringbuilder <close>
 
-  sb:write(#['(@' .. tostring(value.type) .. '){\n']#)
+  if use_type_prefix then
+    sb:write(#['(@' .. tostring(value.type) .. '){\n']#)
+  else
+    sb:write('{\n')
+  end
+
+  local indentation_plus <close> = string.rep('  ', level + 1)
 
   ## for _, field in ipairs(value.type.fields) do
-    ## local indentation = '  '
-    sb:write(#[indentation .. field.name .. ' = ']#)
+    sb:write(indentation_plus, #[field.name .. ' = ']#)
 
     local value_str <close> = (do
       ## if not field.type.is_aggregate then
-        in non_aggregate_value(value.#|field.name|#)
+        in non_aggregate_value(value.#|field.name|#, true)
       ## else
-        in 'TODO'
+        ## if field.type.is_array then
+          in inspect_array_value(value.#|field.name|#)
+
+        ## elseif field.type.is_record then
+          in inspect_record_value(value.#|field.name|#, (level + 1), true)
+
+        ## else
+          in 'TODO'
+        ## end
       ## end
     end)
 
     sb:write(value_str, ',\n')
   ## end
 
-  sb:write('}')
+  local indentation <close> = string.rep('  ', level)
+  sb:write(indentation, '}')
 
   return tostring(sb)
+end
+
+local function inspect_array_value(value: a_array): string
+  local MACRO_str_result: string
+  MACRO_inspect_array_value!(value, 'inspect_array_value')
+  return MACRO_str_result
 end
 
 -- the inspector module
 global function inspector(value: auto): string
   ## if not value.type.is_aggregate then
-    return non_aggregate_value(value)
+    return non_aggregate_value(value, true)
 
   ## else
     ## if value.type.is_string then
-      return inspect_simple_value(value)
+      return inspect_simple_value(value, false)
 
     ## elseif value.type.is_record then
-      return inspect_record_value(value)
+      return inspect_record_value(value, 0, true)
 
     ## elseif value.type.is_array then
-      return inspect_array(value)
+      return inspect_array_value(value)
     ## end
   ## end
 

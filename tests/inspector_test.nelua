@@ -74,15 +74,15 @@ nester.describe("inspector", function()
 
       nester.it("scalar arrays", function()
         local result <close> = inspector((@array(uint16, 3)){3, 4, 5})
-        expect.equal(result, "(@array(uint16, 3)){ 3_u16, 4_u16, 5_u16 }")
+        expect.equal(result, "(@array(uint16, 3)){ 3, 4, 5 }")
 
         -- using syntax sugar
         local result <close> = inspector((@[2]integer){1, 2})
-        expect.equal(result, "(@array(int64, 2)){ 1_i64, 2_i64 }")
+        expect.equal(result, "(@array(int64, 2)){ 1, 2 }")
 
         -- inferred size
         local result <close> = inspector((@[]number){-3, -2})
-        expect.equal(result, "(@array(float64, 2)){ -3.0_f64, -2.0_f64 }")
+        expect.equal(result, "(@array(float64, 2)){ -3.0, -2.0 }")
       end)
     end)
 
@@ -100,6 +100,66 @@ nester.describe("inspector", function()
             '  a = 10_i64,',
             '  b = 20.2_f64,' ,
             '}'
+          }, '\n')
+        ]#)
+
+        local SimpleArrRec = @record{
+          a: [3]integer,
+        }
+
+        local result <close> = inspector((@SimpleArrRec){ a = { 1, 2, 3 } })
+        expect.equal(result, #[
+          table.concat({
+            '(@SimpleArrRec){',
+            '  a = (@array(int64, 3)){ 1, 2, 3 },',
+            '}'
+          }, '\n')
+        ]#)
+      end)
+
+      nester.it("nested records", function()
+        local InnerRecord = @record{
+          a: integer,
+        }
+
+        local OuterRecord = @record{
+          ir: InnerRecord,
+          b: [2]integer
+        }
+
+        local result <close> = inspector((@OuterRecord){ ir = { a = 10 }, b = {20, 30} })
+        expect.equal(result, #[
+          table.concat({
+            '(@OuterRecord){',
+            '  ir = (@InnerRecord){',
+            '    a = 10_i64,',
+            '  },',
+            '  b = (@array(int64, 2)){ 20, 30 },',
+            '}'
+          }, '\n')
+        ]#)
+      end)
+
+      nester.it("record arrays", function()
+        local MyRec = @record{
+          b: byte,
+          i: int16
+        }
+
+        local result <close> = inspector((@[2]MyRec){
+          { b = 1, i = 10},
+          { b = 2, i = 20},
+        })
+
+        expect.equal(result, #[
+          table.concat({
+            '(@array(MyRec, 2)){ {',
+            '  b = 1_u8,',
+            '  i = 10_i16,',
+            '}, {',
+            '  b = 2_u8,',
+            '  i = 20_i16,',
+            '} }',
           }, '\n')
         ]#)
       end)
