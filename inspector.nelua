@@ -38,13 +38,23 @@ local short_suffixes = {
 ]]
 
 -- concepts
-local a_simple_primitive: type = #[concept(function(attr) return is_simple_primitive(attr.type) end)]#
+local a_simple_primitive = #[concept(function(attr) return is_simple_primitive(attr.type) end)]#
 local a_array = #[concept(function(attr) return attr.type.is_array end)]#
 local a_enum_value = #[concept(function(attr) return attr.type.is_enum end)]#
 local a_record_value = #[concept(function(attr) return attr.type.is_record end)]#
 local a_non_aggregate = #[concept(function(attr) return not attr.type.is_aggregate end)]#
+local a_stringy = #[concept(function(attr) return attr.type.is_cstring or attr.type.is_string end)]#
 
--- more specialized inspector functions
+-- specialized inspector functions
+local function inspect_stringy_value(value: a_stringy): string
+  local sb: stringbuilder <close>
+  sb:write('"', value, '"')
+  ## if value.type.is_cstring then
+    sb:write(' --[[ @cstring ]]')
+  ## end
+  return tostring(sb)
+end
+
 local function inspect_simple_value(value: a_simple_primitive, use_suffix: boolean <comptime>): string
   ## local type_suffix = short_suffixes[value.type.name]
 
@@ -80,6 +90,9 @@ local function non_aggregate_value(value: a_non_aggregate, use_suffix: boolean <
 
   ## elseif is_simple_primitive(value.type) then
     return inspect_simple_value(value, use_suffix)
+
+  ## else
+    return 'Unknown'
   ## end
 end
 
@@ -91,17 +104,19 @@ end
 
     for i = 0, < #(#[value]#) do
       local value_str <close> = (do
-        ## if not value.type.subtype.is_aggregate then
+        ## if value.type.subtype.is_stringy then
+          in inspect_stringy_value(#[value]#[i])
+
+        ## elseif not value.type.subtype.is_aggregate then
           in non_aggregate_value(#[value]#[i], false)
 
-        ## elseif value.type.subtype.is_array then
-            in #|inspect_array_value_fn_name|#(#[value]#[i])
-
-        ## elseif value.type.subtype.is_record then
-          in inspect_record_value(#[value]#[i], 0, false)
-
         ## else
-          in 'TODO'
+          ## if value.type.subtype.is_record then
+            in inspect_record_value(#[value]#[i], 0, false)
+
+          ## elseif value.type.subtype.is_array then
+            in #|inspect_array_value_fn_name|#(#[value]#[i])
+          ## end
         ## end
       end)
 
@@ -139,17 +154,21 @@ local function inspect_record_value(value: a_record_value, level: integer, use_t
     sb:write(indentation_plus, #[field.name .. ' = ']#)
 
     local value_str <close> = (do
-      ## if not field.type.is_aggregate then
-        in non_aggregate_value(value.#|field.name|#, true)
-      ## else
-        ## if field.type.is_array then
-          in inspect_array_value(value.#|field.name|#)
+      ## if field.type.is_stringy then
+        in inspect_stringy_value(value.#|field.name|#)
 
-        ## elseif field.type.is_record then
+      ## elseif not field.type.is_aggregate then
+        in non_aggregate_value(value.#|field.name|#, true)
+
+      ## else
+        ## if field.type.is_record then
           in inspect_record_value(value.#|field.name|#, (level + 1), true)
 
+        ## elseif field.type.is_array then
+          in inspect_array_value(value.#|field.name|#)
+
         ## else
-          in 'TODO'
+          in 'Unknown'
         ## end
       ## end
     end)
@@ -171,14 +190,14 @@ end
 
 -- the inspector module
 global function inspector(value: auto): string
-  ## if not value.type.is_aggregate then
+  ## if value.type.is_stringy then
+    return inspect_stringy_value(value)
+
+  ## elseif not value.type.is_aggregate then
     return non_aggregate_value(value, true)
 
   ## else
-    ## if value.type.is_string then
-      return inspect_simple_value(value, false)
-
-    ## elseif value.type.is_record then
+    ## if value.type.is_record then
       return inspect_record_value(value, 0, true)
 
     ## elseif value.type.is_array then
