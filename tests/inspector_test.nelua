@@ -163,6 +163,39 @@ nester.describe("inspector", function()
           }, '\n')
         ]#)
       end)
+
+      nester.it("pointers", function()
+        local a: *int32 = (@*int32)(0x1234)
+
+        local result <close> = inspector(a)
+        expect.equal(result, '0x1234 --[[ @pointer(int32) ]]')
+
+        local RecOfPointers = @record{
+          a: *int32,
+          b: string,
+          c: *[2]integer,
+          d: [2]*integer,
+        }
+
+        local value: RecOfPointers = {
+          =a,
+          b = 'hello world!',
+          c = (@*[2]integer)(0x56789),
+          d = { (@*integer)(0x1010), (@*integer)(0x2020) },
+        }
+
+        local result <close> = inspector(value)
+        expect.equal(result, #[
+          table.concat({
+            '(@RecOfPointers){',
+            '  a = 0x1234 --[[ @pointer(int32) ]],',
+            '  b = "hello world!",',
+            '  c = 0x56789 --[[ @pointer(array(int64, 2)) ]],',
+            '  d = (@array(pointer(int64), 2)){ 0x1010 --[[ @pointer(int64) ]], 0x2020 --[[ @pointer(int64) ]] },',
+            '}'
+          }, '\n')
+        ]#)
+      end)
     end)
   end)
 end)

@@ -43,9 +43,16 @@ local a_array = #[concept(function(attr) return attr.type.is_array end)]#
 local a_enum_value = #[concept(function(attr) return attr.type.is_enum end)]#
 local a_record_value = #[concept(function(attr) return attr.type.is_record end)]#
 local a_non_aggregate = #[concept(function(attr) return not attr.type.is_aggregate end)]#
+local a_pointer = #[concept(function(attr) return attr.type.is_pointer end)]#
 local a_stringy = #[concept(function(attr) return attr.type.is_cstring or attr.type.is_string end)]#
 
 -- specialized inspector functions
+local function inspect_pointer_value(value: a_pointer): string
+  local sb: stringbuilder <close>
+  sb:write(value, #[' --[[ @' .. tostring(value.type) .. ' ]]']#)
+  return tostring(sb)
+end
+
 local function inspect_stringy_value(value: a_stringy): string
   local sb: stringbuilder <close>
   sb:write('"', value, '"')
@@ -90,6 +97,9 @@ local function non_aggregate_value(value: a_non_aggregate, use_suffix: boolean <
 
   ## elseif is_simple_primitive(value.type) then
     return inspect_simple_value(value, use_suffix)
+
+  ## elseif value.type.is_pointer then
+    return inspect_pointer_value(value)
 
   ## else
     return 'Unknown'
