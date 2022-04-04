@@ -1,3 +1,4 @@
+require 'string' -- tostring
 require 'inspector'
 require 'nester'
 
@@ -195,6 +196,76 @@ nester.describe("inspector", function()
             '}'
           }, '\n')
         ]#)
+      end)
+
+      nester.describe("functions", function()
+        local function foo(a: integer, b: integer): integer
+          return a + b
+        end
+
+        local function bar(s: string)
+          print(s)
+        end
+
+        local function tos(v: auto): string
+          return tostring(v)
+        end
+
+        nester.it("simple", function()
+          local result <close> = inspector(foo)
+          expect.equal(result, 'function(a: int64, b: int64): int64')
+        end)
+
+        nester.it("polymorphic", function()
+          local result <close> = inspector(tos)
+          expect.equal(result, 'polyfunction(v: auto): string')
+        end)
+
+        nester.it("record of callbacks", function()
+          local Callbacks = @record{
+            callback_add: function(a: integer, b: integer): integer,
+            callback_print: function(string),
+          }
+          local cb: Callbacks = {}
+
+          local result <close> = inspector(cb)
+          expect.equal(result, #[
+            table.concat({
+              '(@Callbacks){',
+              '  callback_add = nilptr --[[ function(a: int64, b: int64): int64 ]],',
+              '  callback_print = nilptr --[[ function(string): void ]],',
+              '}'
+            }, '\n')
+          ]#)
+
+          cb.callback_add = foo
+          cb.callback_print = bar
+
+          local a_str <close> = tostring(cb.callback_add):gsub('function: ', '', 1)
+          local p_str <close> = tostring(cb.callback_print):gsub('function: ', '', 1)
+
+          local result <close> = inspector(cb)
+          expect.equal(result, string.format(
+            #[
+              table.concat({
+                '(@Callbacks){',
+                '  callback_add = %s --[[ function(a: int64, b: int64): int64 ]],',
+                '  callback_print = %s --[[ function(string): void ]],',
+                '}'
+              }, '\n')
+            ]#,
+            a_str,
+            p_str
+          ))
+        end)
+
+        nester.it("array of callbacks", function()
+          local arr: [2]function(string) = { bar, bar }
+          local bar_s <close> = tostring(bar):gsub('function: ', '', 1)
+
+          local result <close> = inspector(arr)
+          expect.equal(result, string.format('(@array(function(string): void, 2)){ %s, %s }', bar_s, bar_s ))
+        end)
       end)
     end)
   end)

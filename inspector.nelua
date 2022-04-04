@@ -35,6 +35,11 @@ local short_suffixes = {
   float64 = '_f64',
   float128 = '_f128',
 }
+
+local function inspect_procedure_value(value)
+  static_assert(value.type.is_procedure, 'value is not a procedure!')
+  return tostring(value.type)
+end
 ]]
 
 -- concepts
@@ -45,8 +50,33 @@ local a_record_value = #[concept(function(attr) return attr.type.is_record end)]
 local a_non_aggregate = #[concept(function(attr) return not attr.type.is_aggregate end)]#
 local a_pointer = #[concept(function(attr) return attr.type.is_pointer end)]#
 local a_stringy = #[concept(function(attr) return attr.type.is_cstring or attr.type.is_string end)]#
+local a_function = #[concept(function(attr) return attr.type.is_function end)]#
 
 -- specialized inspector functions
+local function inspect_function_value(value: a_function, ctx: string <comptime>): string
+  ## if ctx.value == 'field' then
+    ## local type_fn = ' --[[ ' .. inspect_procedure_value(value) .. ' ]]'
+
+    if value == nilptr then
+      return tostring (#['nilptr' .. type_fn]#)
+    else
+      local sb: stringbuilder <close>
+      local vl <close> = tostring(value):gsub('function: ', '', 1)
+      sb:write(vl, #[type_fn]#)
+      return tostring(sb)
+    end
+
+  ## elseif ctx.value == 'array element' then
+    local sb: stringbuilder <close>
+    local vl <close> = tostring(value):gsub('function: ', '', 1)
+    sb:write(vl)
+    return tostring(sb)
+
+  ## else
+    return tostring (#[inspect_procedure_value(value)]#)
+  ## end
+end
+
 local function inspect_pointer_value(value: a_pointer): string
   local sb: stringbuilder <close>
   sb:write(value, #[' --[[ @' .. tostring(value.type) .. ' ]]']#)
@@ -117,6 +147,10 @@ end
         ## if value.type.subtype.is_stringy then
           in inspect_stringy_value(#[value]#[i])
 
+        ## elseif value.type.subtype.is_function then
+          in inspect_function_value(#[value]#[i], 'array element')
+
+
         ## elseif not value.type.subtype.is_aggregate then
           in non_aggregate_value(#[value]#[i], false)
 
@@ -167,6 +201,9 @@ local function inspect_record_value(value: a_record_value, level: integer, use_t
       ## if field.type.is_stringy then
         in inspect_stringy_value(value.#|field.name|#)
 
+      ## elseif field.type.is_function then
+        in inspect_function_value(value.#|field.name|#, 'field')
+
       ## elseif not field.type.is_aggregate then
         in non_aggregate_value(value.#|field.name|#, true)
 
@@ -203,6 +240,9 @@ global function inspector(value: auto): string
   ## if value.type.is_stringy then
     return inspect_stringy_value(value)
 
+  ## elseif value.type.is_procedure then
+    return tostring(#[inspect_procedure_value(value)]#)
+
   ## elseif not value.type.is_aggregate then
     return non_aggregate_value(value, true)
 
@@ -215,5 +255,5 @@ global function inspector(value: auto): string
     ## end
   ## end
 
-  return 'Unknown'
+  return tostring('Unknown')
 end
