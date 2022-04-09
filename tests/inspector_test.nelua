@@ -1,4 +1,4 @@
-require 'string' -- tostring
+require 'string'
 require 'inspector'
 require 'nester'
 
@@ -281,65 +281,92 @@ nester.describe("inspector", function()
           expect.equal(result, expected_str)
         end)
       end)
+    end)
 
-      nester.it("complex data-type", function()
-        local n: uint8 = 5
-        local E = @enum{ Foo = 0, Bar }
-        local function fn(i: integer): number return i + 1 end
+    nester.it("unions", function()
+      local MyRec1 = @record{ a: integer }
+      local MyRec2 = @record{ a: string }
 
-        local ComplexRec = @record{
-          a: int16,
-          b: record{ x: float32, y: boolean },
-          c: *uint8,
-          d: [2]int32,
-          e: E,
-          cb: function(i: integer): number,
-        }
+      local MyUnion = @union{
+        v1: MyRec1,
+        v2: MyRec2,
+      }
 
-        local value: [2]ComplexRec = {
-          {
-            a = 8,
-            b = { 10.25, true },
-            c = &n,
-            d = { 1, 2 },
-            e = E.Bar,
-            cb = fn
-          },
-          {}
-        }
+      local value: MyUnion = {v1 = {1} }
+      local result <close> = inspector(value)
+      expect.equal(result, '(@MyUnion)() --[[ @union{v1: MyRec1, v2: MyRec2} ]]')
 
+      local result <close> = inspector(value.v1)
+      expect.equal(result, #[
+        table.concat({
+          '(@MyRec1){',
+          '  a = 1_i64,',
+          '}',
+        }, '\n')
+      ]#)
+    end)
 
-        local result <close> = inspector(value)
-        local expected_str <close> = string.format(
-            #[
-            table.concat({
-              '(@array(ComplexRec, 2)){ {',
-              '  a = 8_i16,',
-              '  b = (@record{x: float32, y: boolean}){',
-              '    x = 10.25_f32,',
-              '    y = true,',
-              '  },',
-              '  c = %s --[[ @pointer(uint8) ]],',
-              '  d = (@array(int32, 2)){ 1, 2 },',
-              '  e = E.Bar --[[ 1_i64 ]],',
-              '  cb = %s --[[ function(i: int64): float64 ]],',
-              '}, {',
-              '  a = 0_i16,',
-              '  b = (@record{x: float32, y: boolean}){',
-              '    x = 0.0_f32,',
-              '    y = false,',
-              '  },',
-              '  c = nilptr --[[ @pointer(uint8) ]],',
-              '  d = (@array(int32, 2)){ 0, 0 },',
-              '  e = E.Foo --[[ 0_i64 ]],',
-              '  cb = nilptr --[[ function(i: int64): float64 ]],',
-              '} }'
-            }, '\n')
-          ]#,
-          &n, fn_hex_ptr(fn)
-        )
-        expect.equal(result, expected_str)
-      end)
+    nester.it("complex data-type", function()
+      local n: uint8 = 5
+      local E = @enum{ Foo = 0, Bar }
+      local U = @union{ n: uint8, e: E }
+      local function fn(i: integer): number return i + 1 end
+
+      local ComplexRec = @record{
+        a: int16,
+        b: record{ x: float32, y: boolean },
+        c: *uint8,
+        d: [2]int32,
+        e: E,
+        cb: function(i: integer): number,
+        u: U,
+      }
+
+      local value: [2]ComplexRec = {
+        {
+          a = 8,
+          b = { 10.25, true },
+          c = &n,
+          d = { 1, 2 },
+          e = E.Bar,
+          cb = fn,
+          u = { n = 1 }
+        },
+        {}
+      }
+
+      local result <close> = inspector(value)
+      local expected_str <close> = string.format(
+          #[
+          table.concat({
+            '(@array(ComplexRec, 2)){ {',
+            '  a = 8_i16,',
+            '  b = (@record{x: float32, y: boolean}){',
+            '    x = 10.25_f32,',
+            '    y = true,',
+            '  },',
+            '  c = %s --[[ @pointer(uint8) ]],',
+            '  d = (@array(int32, 2)){ 1, 2 },',
+            '  e = E.Bar --[[ 1_i64 ]],',
+            '  cb = %s --[[ function(i: int64): float64 ]],',
+            '  u = (@U)() --[[ @union{n: uint8, e: E} ]],',
+            '}, {',
+            '  a = 0_i16,',
+            '  b = (@record{x: float32, y: boolean}){',
+            '    x = 0.0_f32,',
+            '    y = false,',
+            '  },',
+            '  c = nilptr --[[ @pointer(uint8) ]],',
+            '  d = (@array(int32, 2)){ 0, 0 },',
+            '  e = E.Foo --[[ 0_i64 ]],',
+            '  cb = nilptr --[[ function(i: int64): float64 ]],',
+            '  u = (@U)() --[[ @union{n: uint8, e: E} ]],',
+            '} }'
+          }, '\n')
+        ]#,
+        &n, fn_hex_ptr(fn)
+      )
+      expect.equal(result, expected_str)
     end)
   end)
 end)

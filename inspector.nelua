@@ -9,7 +9,7 @@ require 'string'
 local stringbuilder = require 'stringbuilder'
 
 -- meta-utils
-##[[
+##[=[
 local function is_simple_primitive(type)
   return type.is_boolean or type.is_scalar or type.is_stringy
 end
@@ -40,7 +40,7 @@ local function inspect_procedure_value(value)
   static_assert(value.type.is_procedure, 'value is not a procedure!')
   return tostring(value.type)
 end
-]]
+]=]
 
 -- concepts
 local a_simple_primitive = #[concept(function(attr) return is_simple_primitive(attr.type) end)]#
@@ -51,8 +51,13 @@ local a_non_aggregate = #[concept(function(attr) return not attr.type.is_aggrega
 local a_pointer = #[concept(function(attr) return attr.type.is_pointer end)]#
 local a_stringy = #[concept(function(attr) return attr.type.is_cstring or attr.type.is_string end)]#
 local a_function = #[concept(function(attr) return attr.type.is_function end)]#
+local a_union = #[concept(function(attr) return attr.type.is_union end)]#
 
 -- specialized inspector functions
+local function inspect_union_value(value: a_union)
+  return tostring(#['(@' .. tostring(value.type) .. ")() --[[ @" .. value.type:typedesc() .. " ]]"]#)
+end
+
 local function inspect_function_value(value: a_function, ctx: string <comptime>): string
   local function fn_hex_ptr(callback: auto)
     local cb_str <close> = tostring(callback)
@@ -162,6 +167,8 @@ end
         ## elseif value.type.subtype.is_function then
           in inspect_function_value(#[value]#[i], 'array element')
 
+        ## elseif value.type.subtype.is_union then
+          in inspect_union_value(#[value]#[i])
 
         ## elseif not value.type.subtype.is_aggregate then
           in non_aggregate_value(#[value]#[i], false)
@@ -216,6 +223,9 @@ local function inspect_record_value(value: a_record_value, level: integer, use_t
       ## elseif field.type.is_function then
         in inspect_function_value(value.#|field.name|#, 'field')
 
+      ## elseif field.type.is_union then
+        in inspect_union_value(value.#|field.name|#)
+
       ## elseif not field.type.is_aggregate then
         in non_aggregate_value(value.#|field.name|#, true)
 
@@ -251,6 +261,9 @@ end
 global function inspector(value: auto): string
   ## if value.type.is_stringy then
     return inspect_stringy_value(value)
+
+  ## elseif value.type.is_union then
+    return inspect_union_value(value)
 
   ## elseif value.type.is_procedure then
     return tostring(#[inspect_procedure_value(value)]#)
