@@ -57,10 +57,10 @@ nester.describe("inspector", function()
       }
 
       local result <close> = inspector(Weeks.Tuesday)
-      expect.equal(result, "Weeks.Tuesday --[[ = 2_i64 ]]")
+      expect.equal(result, "Weeks.Tuesday --[[ 2_i64 ]]")
 
       local result <close> = inspector(ByteWeeks.Friday)
-      expect.equal(result, "ByteWeeks.Friday --[[ = 5_u8 ]]")
+      expect.equal(result, "ByteWeeks.Friday --[[ 5_u8 ]]")
     end)
 
     nester.describe("arrays", function()

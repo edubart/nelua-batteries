@@ -125,7 +125,7 @@ local function inspect_enum_value(value: a_enum_value): string
     end
   ## end
 
-  sb:writef(#[' --[[ = %d'.. short_suffixes[value.type.subtype.name] ..' ]]']#, value)
+  sb:writef(#[' --[[ %d'.. short_suffixes[value.type.subtype.name] ..' ]]']#, value)
 
   return tostring(sb)
 end
