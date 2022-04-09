@@ -79,7 +79,11 @@ end
 
 local function inspect_pointer_value(value: a_pointer): string
   local sb: stringbuilder <close>
-  sb:write(value, #[' --[[ @' .. tostring(value.type) .. ' ]]']#)
+  if value then
+    sb:write(value, #[' --[[ @' .. tostring(value.type) .. ' ]]']#)
+  else
+    sb:write(#['nilptr --[[ @' .. tostring(value.type) .. ' ]]']#)
+  end
   return tostring(sb)
 end
 
@@ -130,6 +134,9 @@ local function non_aggregate_value(value: a_non_aggregate, use_suffix: boolean <
 
   ## elseif value.type.is_pointer then
     return inspect_pointer_value(value)
+
+  ## elseif value.type.is_nilptr then
+    return 'nilptr'
 
   ## else
     return 'Unknown'

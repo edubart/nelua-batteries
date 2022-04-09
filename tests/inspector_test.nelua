@@ -171,6 +171,13 @@ nester.describe("inspector", function()
         local result <close> = inspector(a)
         expect.equal(result, '0x1234 --[[ @pointer(int32) ]]')
 
+        local result  = inspector(nilptr)
+        expect.equal(result, 'nilptr')
+
+        local n: *int16 = nilptr
+        local result <close> = inspector(n)
+        expect.equal(result, 'nilptr --[[ @pointer(int16) ]]')
+
         local RecOfPointers = @record{
           a: *int32,
           b: string,
