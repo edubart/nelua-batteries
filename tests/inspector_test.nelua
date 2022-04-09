@@ -206,6 +206,11 @@ nester.describe("inspector", function()
       end)
 
       nester.describe("functions", function()
+        local function fn_hex_ptr(callback: auto)
+          local cb_str <close> = tostring(callback)
+          return cb_str:gsub('function: ', '', 1)
+        end
+
         local function foo(a: integer, b: integer): integer
           return a + b
         end
@@ -248,11 +253,9 @@ nester.describe("inspector", function()
           cb.callback_add = foo
           cb.callback_print = bar
 
-          local a_str <close> = tostring(cb.callback_add):gsub('function: ', '', 1)
-          local p_str <close> = tostring(cb.callback_print):gsub('function: ', '', 1)
-
-          local result <close> = inspector(cb)
-          expect.equal(result, string.format(
+          local a_str <close> = fn_hex_ptr(cb.callback_add)
+          local p_str <close> = fn_hex_ptr(cb.callback_print)
+          local expected_str <close> = string.format(
             #[
               table.concat({
                 '(@Callbacks){',
@@ -263,15 +266,19 @@ nester.describe("inspector", function()
             ]#,
             a_str,
             p_str
-          ))
+          )
+
+          local result <close> = inspector(cb)
+          expect.equal(result, expected_str)
         end)
 
         nester.it("array of callbacks", function()
           local arr: [2]function(string) = { bar, bar }
-          local bar_s <close> = tostring(bar):gsub('function: ', '', 1)
+          local bar_s <close> = fn_hex_ptr(bar)
 
           local result <close> = inspector(arr)
-          expect.equal(result, string.format('(@array(function(string): void, 2)){ %s, %s }', bar_s, bar_s ))
+          local expected_str <close> = string.format('(@array(function(string): void, 2)){ %s, %s }', bar_s, bar_s )
+          expect.equal(result, expected_str)
         end)
       end)
     end)

@@ -54,6 +54,11 @@ local a_function = #[concept(function(attr) return attr.type.is_function end)]#
 
 -- specialized inspector functions
 local function inspect_function_value(value: a_function, ctx: string <comptime>): string
+  local function fn_hex_ptr(callback: auto)
+    local cb_str <close> = tostring(callback)
+    return cb_str:gsub('function: ', '', 1)
+  end
+
   ## if ctx.value == 'field' then
     ## local type_fn = ' --[[ ' .. inspect_procedure_value(value) .. ' ]]'
 
@@ -61,14 +66,14 @@ local function inspect_function_value(value: a_function, ctx: string <comptime>)
       return tostring (#['nilptr' .. type_fn]#)
     else
       local sb: stringbuilder <close>
-      local vl <close> = tostring(value):gsub('function: ', '', 1)
+      local vl <close> = fn_hex_ptr(value)
       sb:write(vl, #[type_fn]#)
       return tostring(sb)
     end
 
   ## elseif ctx.value == 'array element' then
     local sb: stringbuilder <close>
-    local vl <close> = tostring(value):gsub('function: ', '', 1)
+    local vl <close> = fn_hex_ptr(value)
     sb:write(vl)
     return tostring(sb)
 
