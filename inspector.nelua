@@ -259,7 +259,10 @@ end
 
 -- the inspector module
 global function inspector(value: auto): string
-  ## if value.type.is_stringy then
+  ## if value.type.is_type then
+    return tostring(#['@'..value.value:typedesc()]#)
+
+  ## elseif value.type.is_stringy then
     return inspect_stringy_value(value)
 
   ## elseif value.type.is_union then
