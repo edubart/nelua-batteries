@@ -2,6 +2,11 @@ require 'string' -- tostring
 require 'inspector'
 require 'nester'
 
+local function fn_hex_ptr(callback: auto)
+  local cb_str <close> = tostring(callback)
+  return cb_str:gsub('function: ', '', 1)
+end
+
 nester.describe("inspector", function()
   nester.describe("primitives", function()
     nester.describe("simple", function()
@@ -206,11 +211,6 @@ nester.describe("inspector", function()
       end)
 
       nester.describe("functions", function()
-        local function fn_hex_ptr(callback: auto)
-          local cb_str <close> = tostring(callback)
-          return cb_str:gsub('function: ', '', 1)
-        end
-
         local function foo(a: integer, b: integer): integer
           return a + b
         end
@@ -280,6 +280,65 @@ nester.describe("inspector", function()
           local expected_str <close> = string.format('(@array(function(string): void, 2)){ %s, %s }', bar_s, bar_s )
           expect.equal(result, expected_str)
         end)
+      end)
+
+      nester.it("complex data-type", function()
+        local n: uint8 = 5
+        local E = @enum{ Foo = 0, Bar }
+        local function fn(i: integer): number return i + 1 end
+
+        local ComplexRec = @record{
+          a: int16,
+          b: record{ x: float32, y: boolean },
+          c: *uint8,
+          d: [2]int32,
+          e: E,
+          cb: function(i: integer): number,
+        }
+
+        local value: [2]ComplexRec = {
+          {
+            a = 8,
+            b = { 10.25, true },
+            c = &n,
+            d = { 1, 2 },
+            e = E.Bar,
+            cb = fn
+          },
+          {}
+        }
+
+
+        local result <close> = inspector(value)
+        local expected_str <close> = string.format(
+            #[
+            table.concat({
+              '(@array(ComplexRec, 2)){ {',
+              '  a = 8_i16,',
+              '  b = (@record{x: float32, y: boolean}){',
+              '    x = 10.25_f32,',
+              '    y = true,',
+              '  },',
+              '  c = %s --[[ @pointer(uint8) ]],',
+              '  d = (@array(int32, 2)){ 1, 2 },',
+              '  e = E.Bar --[[ 1_i64 ]],',
+              '  cb = %s --[[ function(i: int64): float64 ]],',
+              '}, {',
+              '  a = 0_i16,',
+              '  b = (@record{x: float32, y: boolean}){',
+              '    x = 0.0_f32,',
+              '    y = false,',
+              '  },',
+              '  c = nilptr --[[ @pointer(uint8) ]],',
+              '  d = (@array(int32, 2)){ 0, 0 },',
+              '  e = E.Foo --[[ 0_i64 ]],',
+              '  cb = nilptr --[[ function(i: int64): float64 ]],',
+              '} }'
+            }, '\n')
+          ]#,
+          &n, fn_hex_ptr(fn)
+        )
+        expect.equal(result, expected_str)
       end)
     end)
   end)
