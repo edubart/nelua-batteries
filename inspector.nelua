@@ -1,9 +1,41 @@
---[[
+--[=[
 The inspector module.
 
 This module it's a function that receives any value and
 returns the whole content of the passed value as a string.
+
+Inspired by the [inspect](https://github.com/kikito/inspect.lua/) library
+
+## Usage
+
+Copy `inspector.nelua` file to a project and require it, then just
+call the `inspector` function passing the value to be inspected:
+
+```lua
+require 'inspector' -- note: `local inspector = require "inspector"` it's also supported.
+
+local vec2 = @record{
+  x: number,
+  y: number
+}
+
+local position: vec2 = { 2, 3 }
+
+-- Just call inspector function passing the value to be inspected (it can be anything).
+-- note: if you're not using GC, then you must free the value, otherwise it'll leak.
+local pos_contents <close> = inspector(position)
+
+-- print the inspected position
+print(pos_contents)
+
+--[[ output:
+(@vec2){
+  x = 2.0_f64,
+  y = 3.0_f64,
+}
 ]]
+```
+]=]
 
 require 'string'
 local stringbuilder = require 'stringbuilder'
@@ -226,7 +258,7 @@ local function inspect_array_value(value: a_array, sb: *stringbuilder)
   MACRO_inspect_array_value!(value, 'inspect_array_value', sb)
 end
 
-
+-- The inspector function, pass any value and the contents will be returned as a string (which should be freed).
 global function inspector(value: auto): string
   local sb: stringbuilder <close>
 
