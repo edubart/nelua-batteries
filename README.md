@@ -21,6 +21,7 @@ but also a wrapper to make it easier to use it with Nelua.
 * `fs` - Cross platform file system library, you can use manage files and directories.
 * `json` - Parse JSON into Nelua records, made in pure Nelua.
 * `nester` - Minimal unit testing framework inspired by [lester](https://github.com/edubart/lester).
+* `inspector` - Function module which receives any value and returns the contents as a string, inspired by [inspect.lua](https://github.com/kikito/inspect.lua/)
 
 # Examples
 

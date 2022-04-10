@@ -1,0 +1,399 @@
+require 'string'
+require 'inspector'
+require 'nester'
+
+local function fn_hex_ptr(callback: auto)
+  local cb_str <close> = tostring(callback)
+  return cb_str:gsub('function: ', '', 1)
+end
+
+nester.describe("inspector", function()
+  nester.describe("simple", function()
+    nester.it("booleans", function()
+      local result <close> = inspector(true)
+      expect.equal(result, "true")
+
+      local result <close> = inspector(false)
+      expect.equal(result, "false")
+    end)
+
+    nester.it("integers", function()
+      local result <close> = inspector(10)
+      expect.equal(result, "10_i64")
+    end)
+
+    nester.it("numbers", function()
+      local result <close> = inspector(20.20)
+      expect.equal(result, "20.2_f64")
+
+      local result <close> = inspector(30_number)
+      expect.equal(result, "30.0_f64")
+    end)
+
+    nester.it("strings", function()
+      local result <close> = inspector("hello world!")
+      expect.equal(result, '"hello world!"')
+
+      local result <close> = inspector("hello world!"_cstring)
+      expect.equal(result, '"hello world!" --[[ @cstring ]]')
+    end)
+  end)
+
+  nester.it("enums", function()
+    local Weeks = @enum{
+      Sunday = 0,
+      Monday,
+      Tuesday,
+      Wednesday,
+      Thursday,
+      Friday,
+      Saturday
+    }
+
+    local ByteWeeks = @enum(byte){
+      Sunday = 0,
+      Monday,
+      Tuesday,
+      Wednesday,
+      Thursday,
+      Friday,
+      Saturday
+    }
+
+    local result <close> = inspector(Weeks.Tuesday)
+    expect.equal(result, "Weeks.Tuesday --[[ 2_i64 ]]")
+
+    local result <close> = inspector(ByteWeeks.Friday)
+    expect.equal(result, "ByteWeeks.Friday --[[ 5_u8 ]]")
+  end)
+
+  nester.describe("arrays", function()
+    nester.it("boolean arrays", function()
+      local result <close> = inspector((@array(boolean, 3)){true, false, false})
+      expect.equal(result, "(@array(boolean, 3)){ true, false, false }")
+
+      -- using syntax sugar
+      local result <close> = inspector((@[2]boolean){false, true})
+      expect.equal(result, "(@array(boolean, 2)){ false, true }")
+    end)
+
+    nester.it("scalar arrays", function()
+      local result <close> = inspector((@array(uint16, 3)){3, 4, 5})
+      expect.equal(result, "(@array(uint16, 3)){ 3, 4, 5 }")
+
+      -- using syntax sugar
+      local result <close> = inspector((@[2]integer){1, 2})
+      expect.equal(result, "(@array(int64, 2)){ 1, 2 }")
+
+      -- inferred size
+      local result <close> = inspector((@[]number){-3, -2})
+      expect.equal(result, "(@array(float64, 2)){ -3.0, -2.0 }")
+    end)
+  end)
+
+  nester.describe("records", function()
+    nester.it("simple", function()
+      local SimpleRec = @record{
+        a: integer,
+        b: number
+      }
+
+      local result <close> = inspector((@SimpleRec){ 10, 20.20 })
+      expect.equal(result, #[
+        table.concat({
+          '(@SimpleRec){',
+          '  a = 10_i64,',
+          '  b = 20.2_f64,' ,
+          '}'
+        }, '\n')
+      ]#)
+
+      local SimpleArrRec = @record{
+        a: [3]integer,
+      }
+
+      local result <close> = inspector((@SimpleArrRec){ a = { 1, 2, 3 } })
+      expect.equal(result, #[
+        table.concat({
+          '(@SimpleArrRec){',
+          '  a = (@array(int64, 3)){ 1, 2, 3 },',
+          '}'
+        }, '\n')
+      ]#)
+    end)
+
+    nester.it("nested records", function()
+      local InnerRecord = @record{
+        a: integer,
+      }
+
+      local OuterRecord = @record{
+        ir: InnerRecord,
+        b: [2]integer
+      }
+
+      local result <close> = inspector((@OuterRecord){ ir = { a = 10 }, b = {20, 30} })
+      expect.equal(result, #[
+        table.concat({
+          '(@OuterRecord){',
+          '  ir = (@InnerRecord){',
+          '    a = 10_i64,',
+          '  },',
+          '  b = (@array(int64, 2)){ 20, 30 },',
+          '}'
+        }, '\n')
+      ]#)
+    end)
+
+    nester.it("record arrays", function()
+      local MyRec = @record{
+        b: byte,
+        i: int16
+      }
+
+      local result <close> = inspector((@[2]MyRec){
+        { b = 1, i = 10},
+        { b = 2, i = 20},
+      })
+
+      expect.equal(result, #[
+        table.concat({
+          '(@array(MyRec, 2)){ {',
+          '  b = 1_u8,',
+          '  i = 10_i16,',
+          '}, {',
+          '  b = 2_u8,',
+          '  i = 20_i16,',
+          '} }',
+        }, '\n')
+      ]#)
+    end)
+
+    nester.it("pointers", function()
+      local a: *int32 = (@*int32)(0x1234)
+
+      local result <close> = inspector(a)
+      expect.equal(result, '0x1234 --[[ @pointer(int32) ]]')
+
+      local result <close> = inspector(nilptr)
+      expect.equal(result, 'nilptr')
+
+      local n: *int16 = nilptr
+      local result <close> = inspector(n)
+      expect.equal(result, 'nilptr --[[ @pointer(int16) ]]')
+
+      local RecOfPointers = @record{
+        a: *int32,
+        b: string,
+        c: *[2]integer,
+        d: [2]*integer,
+      }
+
+      local value: RecOfPointers = {
+        =a,
+        b = 'hello world!',
+        c = (@*[2]integer)(0x56789),
+        d = { (@*integer)(0x1010), (@*integer)(0x2020) },
+      }
+
+      local result <close> = inspector(value)
+      expect.equal(result, #[
+        table.concat({
+          '(@RecOfPointers){',
+          '  a = 0x1234 --[[ @pointer(int32) ]],',
+          '  b = "hello world!",',
+          '  c = 0x56789 --[[ @pointer(array(int64, 2)) ]],',
+          '  d = (@array(pointer(int64), 2)){ 0x1010 --[[ @pointer(int64) ]], 0x2020 --[[ @pointer(int64) ]] },',
+          '}'
+        }, '\n')
+      ]#)
+    end)
+  end)
+
+  nester.describe("functions", function()
+    local function foo(a: integer, b: integer): integer
+      return a + b
+    end
+
+    local function bar(s: string)
+      print(s)
+    end
+
+    local function tos(v: auto): string
+      return tostring(v)
+    end
+
+    nester.it("simple", function()
+      local result <close> = inspector(foo)
+      expect.equal(result, 'function(a: int64, b: int64): int64')
+    end)
+
+    nester.it("polymorphic", function()
+      local result <close> = inspector(tos)
+      expect.equal(result, 'polyfunction(v: auto): string')
+    end)
+
+    nester.it("record of callbacks", function()
+      local Callbacks = @record{
+        callback_add: function(a: integer, b: integer): integer,
+        callback_print: function(string),
+      }
+      local cb: Callbacks = {}
+
+      local result <close> = inspector(cb)
+      expect.equal(result, #[
+        table.concat({
+          '(@Callbacks){',
+          '  callback_add = nilptr --[[ function(a: int64, b: int64): int64 ]],',
+          '  callback_print = nilptr --[[ function(string): void ]],',
+          '}'
+        }, '\n')
+      ]#)
+
+      cb.callback_add = foo
+      cb.callback_print = bar
+
+      local a_str <close> = fn_hex_ptr(cb.callback_add)
+      local p_str <close> = fn_hex_ptr(cb.callback_print)
+      local expected_str <close> = string.format(
+        #[
+          table.concat({
+            '(@Callbacks){',
+            '  callback_add = %s --[[ function(a: int64, b: int64): int64 ]],',
+            '  callback_print = %s --[[ function(string): void ]],',
+            '}'
+          }, '\n')
+        ]#,
+        a_str,
+        p_str
+      )
+
+      local result <close> = inspector(cb)
+      expect.equal(result, expected_str)
+    end)
+
+    nester.it("array of callbacks", function()
+      local arr: [2]function(string) = { bar, bar }
+      local bar_s <close> = fn_hex_ptr(bar)
+
+      local result <close> = inspector(arr)
+      local expected_str <close> = string.format('(@array(function(string): void, 2)){ %s, %s }', bar_s, bar_s )
+      expect.equal(result, expected_str)
+    end)
+  end)
+
+  nester.it("unions", function()
+    local MyRec1 = @record{ a: integer }
+    local MyRec2 = @record{ a: string }
+
+    local MyUnion = @union{
+      v1: MyRec1,
+      v2: MyRec2,
+    }
+
+    local value: MyUnion = {v1 = {1} }
+    local result <close> = inspector(value)
+    expect.equal(result, '(@MyUnion)() --[[ @union{v1: MyRec1, v2: MyRec2} ]]')
+
+    local result <close> = inspector(value.v1)
+    expect.equal(result, #[
+      table.concat({
+        '(@MyRec1){',
+        '  a = 1_i64,',
+        '}',
+      }, '\n')
+    ]#)
+  end)
+
+  nester.describe("types (typedesc)", function()
+    local MyRec = @record{ b: byte }
+    local MyUnion = @union{ n: integer, m: MyRec }
+    local MyEnum = @enum{ Foo = 0, Bar }
+    local MyArr = @array(MyEnum, 2)
+
+    nester.it('record', function()
+      local result <close> = inspector(MyRec)
+      expect.equal(result, '@record{b: uint8}')
+    end)
+
+    nester.it('union', function()
+      local result <close> = inspector(MyUnion)
+      expect.equal(result, '@union{n: int64, m: MyRec}')
+    end)
+
+    nester.it('enum', function()
+      local result <close> = inspector(MyEnum)
+      expect.equal(result, '@enum(int64){Foo=0, Bar=1}')
+    end)
+
+    nester.it('array', function()
+      local result <close> = inspector(MyArr)
+      expect.equal(result, '@array(MyEnum, 2)')
+    end)
+  end)
+
+  nester.it("complex data-type", function()
+    local n: uint8 = 5
+    local E = @enum{ Foo = 0, Bar }
+    local U = @union{ n: uint8, e: E }
+    local function fn(i: integer): number return i + 1 end
+
+    local ComplexRec = @record{
+      a: int16,
+      b: record{ x: float32, y: boolean },
+      c: *uint8,
+      d: [2]int32,
+      e: E,
+      cb: function(i: integer): number,
+      u: U,
+    }
+
+    local value: [2]ComplexRec = {
+      {
+        a = 8,
+        b = { 10.25, true },
+        c = &n,
+        d = { 1, 2 },
+        e = E.Bar,
+        cb = fn,
+        u = { n = 1 }
+      },
+      {}
+    }
+
+    local fn_hex <close> = fn_hex_ptr(fn)
+
+    local result <close> = inspector(value)
+    local expected_str <close> = string.format(
+        #[
+        table.concat({
+          '(@array(ComplexRec, 2)){ {',
+          '  a = 8_i16,',
+          '  b = (@record{x: float32, y: boolean}){',
+          '    x = 10.25_f32,',
+          '    y = true,',
+          '  },',
+          '  c = %s --[[ @pointer(uint8) ]],',
+          '  d = (@array(int32, 2)){ 1, 2 },',
+          '  e = E.Bar --[[ 1_i64 ]],',
+          '  cb = %s --[[ function(i: int64): float64 ]],',
+          '  u = (@U)() --[[ @union{n: uint8, e: E} ]],',
+          '}, {',
+          '  a = 0_i16,',
+          '  b = (@record{x: float32, y: boolean}){',
+          '    x = 0.0_f32,',
+          '    y = false,',
+          '  },',
+          '  c = nilptr --[[ @pointer(uint8) ]],',
+          '  d = (@array(int32, 2)){ 0, 0 },',
+          '  e = E.Foo --[[ 0_i64 ]],',
+          '  cb = nilptr --[[ function(i: int64): float64 ]],',
+          '  u = (@U)() --[[ @union{n: uint8, e: E} ]],',
+          '} }'
+        }, '\n')
+      ]#,
+      &n, fn_hex
+    )
+    expect.equal(result, expected_str)
+  end)
+end)

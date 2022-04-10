@@ -1,0 +1,293 @@
+--[=[
+The inspector module.
+
+This module it's a function that receives any value and
+returns the whole content of the passed value as a string.
+
+Inspired by the [inspect.lua](https://github.com/kikito/inspect.lua/) library
+
+## Usage
+
+Copy `inspector.nelua` file to a project and require it, then just
+call the `inspector` function passing the value to be inspected:
+
+```lua
+require 'inspector'
+
+local vec2 = @record{
+  x: number,
+  y: number
+}
+
+local position: vec2 = { 2, 3 }
+
+-- Just call inspector function passing the value to be inspected (it can be anything).
+-- note: if you're not using GC, then you must free the value, otherwise it'll leak.
+local pos_contents <close> = inspector(position)
+
+-- print the inspected position
+print(pos_contents)
+
+--[[ output:
+(@vec2){
+  x = 2.0_f64,
+  y = 3.0_f64,
+}
+]]
+```
+]=]
+
+require 'string'
+local stringbuilder = require 'stringbuilder'
+
+-- meta-utils
+##[=[
+local function is_simple_primitive(type)
+  return type.is_boolean or type.is_scalar or type.is_stringy
+end
+
+local short_suffixes = {
+  integer = '_i',
+  uinteger = '_u',
+  number = '_n',
+  byte = '_b',
+  isize = '_is',
+  int8 = '_i8',
+  int16 = '_i16',
+  int32 = '_i32',
+  int64 = '_i64',
+  int128 = '_i128',
+  usize = '_us',
+  uint8 = '_u8',
+  uint16 = '_u16',
+  uint32 = '_u32',
+  uint64 = '_u64',
+  uint128 = '_u128',
+  float32 = '_f32',
+  float64 = '_f64',
+  float128 = '_f128',
+}
+
+local function inspect_procedure_value(value)
+  static_assert(value.type.is_procedure, 'value is not a procedure!')
+  return tostring(value.type)
+end
+]=]
+
+-- concepts
+local a_simple_primitive = #[concept(function(attr) return is_simple_primitive(attr.type) end)]#
+local a_array            = #[concept(function(attr) return attr.type.is_array end)]#
+local a_enum_value       = #[concept(function(attr) return attr.type.is_enum end)]#
+local a_record_value     = #[concept(function(attr) return attr.type.is_record end)]#
+local a_non_aggregate    = #[concept(function(attr) return not attr.type.is_aggregate end)]#
+local a_pointer          = #[concept(function(attr) return attr.type.is_pointer end)]#
+local a_stringy          = #[concept(function(attr) return attr.type.is_cstring or attr.type.is_string end)]#
+local a_function         = #[concept(function(attr) return attr.type.is_function end)]#
+local a_union            = #[concept(function(attr) return attr.type.is_union end)]#
+
+-- specialized inspector functions
+local function inspect_union_value(value: a_union, sb: *stringbuilder)
+  sb:write(#['(@' .. tostring(value.type) .. ")() --[[ @" .. value.type:typedesc() .. " ]]"]#)
+end
+
+local function inspect_function_value(value: a_function, ctx: string <comptime>, sb: *stringbuilder)
+  local function fn_hex_ptr(callback: auto)
+    local cb_str <close> = tostring(callback)
+    return cb_str:gsub('function: ', '', 1)
+  end
+
+  ## if ctx.value == 'field' then
+    ## local type_fn = ' --[[ ' .. inspect_procedure_value(value) .. ' ]]'
+
+    if value == nilptr then
+      sb:write(#['nilptr' .. type_fn]#)
+    else
+      local vl <close> = fn_hex_ptr(value)
+      sb:write(vl, #[type_fn]#)
+    end
+
+  ## elseif ctx.value == 'array element' then
+    local vl <close> = fn_hex_ptr(value)
+    sb:write(vl)
+
+  ## else
+    sb:write(#[inspect_procedure_value(value)]#)
+  ## end
+end
+
+local function inspect_pointer_value(value: a_pointer, sb: *stringbuilder)
+  if value then
+    sb:write(value, #[' --[[ @' .. tostring(value.type) .. ' ]]']#)
+  else
+    sb:write(#['nilptr --[[ @' .. tostring(value.type) .. ' ]]']#)
+  end
+end
+
+local function inspect_stringy_value(value: a_stringy, sb: *stringbuilder)
+  sb:write('"', value, '"')
+  ## if value.type.is_cstring then
+    sb:write(' --[[ @cstring ]]')
+  ## end
+end
+
+local function inspect_simple_value(value: a_simple_primitive, use_suffix: boolean <comptime>, sb: *stringbuilder)
+  ## local type_suffix = short_suffixes[value.type.name]
+
+  ## if type_suffix and use_suffix.value then
+    sb:write(value, #[type_suffix]#)
+  ## else
+    sb:write(value)
+  ## end
+end
+
+local function inspect_enum_value(value: a_enum_value, sb: *stringbuilder)
+  sb:write(#[tostring(value.type) .. '.']#)
+
+  -- Note: this unrolls various `if`s, just to find and write to sb the right enum field
+  -- correspondent to the value
+  ## for _, field in ipairs(value.type.fields) do
+    if value == #[field.value]# then
+      sb:write(#[field.name]#)
+    end
+  ## end
+
+  sb:writef(#[' --[[ %d'.. short_suffixes[value.type.subtype.name] ..' ]]']#, value)
+end
+
+local function non_aggregate_value(value: a_non_aggregate, use_suffix: boolean <comptime>, sb: *stringbuilder)
+  ## if value.type.is_enum then
+    inspect_enum_value(value, sb)
+
+  ## elseif is_simple_primitive(value.type) then
+    inspect_simple_value(value, use_suffix, sb)
+
+  ## elseif value.type.is_pointer then
+    inspect_pointer_value(value, sb)
+
+  ## elseif value.type.is_nilptr then
+    sb:write('nilptr')
+
+  ## else
+    sb:write('Unknown')
+  ## end
+end
+
+## local function MACRO_inspect_array_value(value, inspect_array_value_fn_name, sb)
+  do
+    #[sb]#:write(#['(@' .. tostring(value.type) .. '){ ']#)
+
+    for i = 0, < #(#[value]#) do
+      ## if value.type.subtype.is_stringy then
+        inspect_stringy_value(#[value]#[i], sb)
+
+      ## elseif value.type.subtype.is_function then
+        inspect_function_value(#[value]#[i], 'array element', sb)
+
+      ## elseif value.type.subtype.is_union then
+        inspect_union_value(#[value]#[i], sb)
+
+      ## elseif not value.type.subtype.is_aggregate then
+        non_aggregate_value(#[value]#[i], false, sb)
+
+      ## else
+        ## if value.type.subtype.is_record then
+          inspect_record_value(#[value]#[i], 0, false, sb)
+
+        ## elseif value.type.subtype.is_array then
+          #|inspect_array_value_fn_name|#(#[value]#[i], sb)
+        ## end
+      ## end
+
+      if i < #value - 1 then
+        #[sb]#:write(', ')
+      end
+    end
+
+    #[sb]#:write(" }")
+  end
+## end
+
+local function inspect_record_value(value: a_record_value, level: integer, use_type_prefix: boolean, sb: *stringbuilder)
+  local function inspect_array_value(value: a_array, sb: *stringbuilder)
+    MACRO_inspect_array_value!(value, 'inspect_array_value', sb)
+  end
+
+  if use_type_prefix then
+    sb:write(#['(@' .. tostring(value.type) .. '){\n']#)
+  else
+    sb:write('{\n')
+  end
+
+  local indentation_plus <close> = string.rep('  ', level + 1)
+
+  ## for _, field in ipairs(value.type.fields) do
+    sb:write(indentation_plus, #[field.name .. ' = ']#)
+
+    ## if field.type.is_stringy then
+      inspect_stringy_value(value.#|field.name|#, sb)
+
+    ## elseif field.type.is_function then
+      inspect_function_value(value.#|field.name|#, 'field', sb)
+
+    ## elseif field.type.is_union then
+      inspect_union_value(value.#|field.name|#, sb)
+
+    ## elseif not field.type.is_aggregate then
+      non_aggregate_value(value.#|field.name|#, true, sb)
+
+    ## else
+      ## if field.type.is_record then
+        inspect_record_value(value.#|field.name|#, (level + 1), true, sb)
+
+      ## elseif field.type.is_array then
+        inspect_array_value(value.#|field.name|#, sb)
+
+      ## else
+        sb:write('Unknown')
+      ## end
+    ## end
+
+    sb:write(',\n')
+  ## end
+
+  local indentation <close> = string.rep('  ', level)
+  sb:write(indentation, '}')
+end
+
+local function inspect_array_value(value: a_array, sb: *stringbuilder)
+  MACRO_inspect_array_value!(value, 'inspect_array_value', sb)
+end
+
+-- The inspector function, pass any value and the contents will be returned as a string (which should be freed).
+global function inspector(value: auto): string
+  local sb: stringbuilder <close>
+
+  ## if value.type.is_type then
+    sb:write(#['@'..value.value:typedesc()]#)
+
+  ## elseif value.type.is_stringy then
+    inspect_stringy_value(value, sb)
+
+  ## elseif value.type.is_union then
+    inspect_union_value(value, sb)
+
+  ## elseif value.type.is_procedure then
+    sb:write(#[inspect_procedure_value(value)]#)
+
+  ## elseif not value.type.is_aggregate then
+    non_aggregate_value(value, true, sb)
+
+  ## else
+    ## if value.type.is_record then
+      inspect_record_value(value, 0, true, sb)
+
+    ## elseif value.type.is_array then
+      inspect_array_value(value, sb)
+
+    ## else
+      sb:write('Unknown')
+    ## end
+  ## end
+
+  return tostring(sb)
+end
