@@ -91,24 +91,17 @@ local function inspect_union_value(value: a_union, sb: *stringbuilder)
 end
 
 local function inspect_function_value(value: a_function, ctx: string <comptime>, sb: *stringbuilder)
-  local function fn_hex_ptr(callback: auto)
-    local cb_str <close> = tostring(callback)
-    return cb_str:gsub('function: ', '', 1)
-  end
-
   ## if ctx.value == 'field' then
     ## local type_fn = ' --[[ ' .. inspect_procedure_value(value) .. ' ]]'
 
     if value == nilptr then
       sb:write(#['nilptr' .. type_fn]#)
     else
-      local vl <close> = fn_hex_ptr(value)
-      sb:write(vl, #[type_fn]#)
+      sb:write((@pointer)(value), #[type_fn]#)
     end
 
   ## elseif ctx.value == 'array element' then
-    local vl <close> = fn_hex_ptr(value)
-    sb:write(vl)
+    sb:write((@pointer)(value))
 
   ## else
     sb:write(#[inspect_procedure_value(value)]#)
@@ -218,10 +211,9 @@ local function inspect_record_value(value: a_record_value, level: integer, use_t
     sb:write('{\n')
   end
 
-  local indentation_plus <close> = string.rep('  ', level + 1)
-
   ## for _, field in ipairs(value.type.fields) do
-    sb:write(indentation_plus, #[field.name .. ' = ']#)
+    sb:writebyte(' '_b, 2*(level+1))
+    sb:write(#[field.name .. ' = ']#)
 
     ## if field.type.is_stringy then
       inspect_stringy_value(value.#|field.name|#, sb)
@@ -250,8 +242,8 @@ local function inspect_record_value(value: a_record_value, level: integer, use_t
     sb:write(',\n')
   ## end
 
-  local indentation <close> = string.rep('  ', level)
-  sb:write(indentation, '}')
+  sb:writebyte(' '_b, 2*level)
+  sb:write('}')
 end
 
 local function inspect_array_value(value: a_array, sb: *stringbuilder)
@@ -289,5 +281,5 @@ global function inspector(value: auto): string
     ## end
   ## end
 
-  return tostring(sb)
+  return sb:promote()
 end
