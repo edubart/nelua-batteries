@@ -12,7 +12,7 @@ Copy `inspector.nelua` file to a project and require it, then just
 call the `inspector` function passing the value to be inspected:
 
 ```lua
-require 'inspector' -- note: `local inspector = require "inspector"` it's also supported.
+require 'inspector'
 
 local vec2 = @record{
   x: number,
