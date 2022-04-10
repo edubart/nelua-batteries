@@ -4,7 +4,7 @@ The inspector module.
 This module it's a function that receives any value and
 returns the whole content of the passed value as a string.
 
-Inspired by the [inspect](https://github.com/kikito/inspect.lua/) library
+Inspired by the [inspect.lua](https://github.com/kikito/inspect.lua/) library
 
 ## Usage
 
