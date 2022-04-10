@@ -361,6 +361,8 @@ nester.describe("inspector", function()
       {}
     }
 
+    local fn_hex <close> = fn_hex_ptr(fn)
+
     local result <close> = inspector(value)
     local expected_str <close> = string.format(
         #[
@@ -390,7 +392,7 @@ nester.describe("inspector", function()
           '} }'
         }, '\n')
       ]#,
-      &n, fn_hex_ptr(fn)
+      &n, fn_hex
     )
     expect.equal(result, expected_str)
   end)

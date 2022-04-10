@@ -1,7 +1,7 @@
 --[[
 The inspector module.
 
-This module it's a function that receives anything and
+This module it's a function that receives any value and
 returns the whole content of the passed value as a string.
 ]]
 
@@ -44,14 +44,14 @@ end
 
 -- concepts
 local a_simple_primitive = #[concept(function(attr) return is_simple_primitive(attr.type) end)]#
-local a_array = #[concept(function(attr) return attr.type.is_array end)]#
-local a_enum_value = #[concept(function(attr) return attr.type.is_enum end)]#
-local a_record_value = #[concept(function(attr) return attr.type.is_record end)]#
-local a_non_aggregate = #[concept(function(attr) return not attr.type.is_aggregate end)]#
-local a_pointer = #[concept(function(attr) return attr.type.is_pointer end)]#
-local a_stringy = #[concept(function(attr) return attr.type.is_cstring or attr.type.is_string end)]#
-local a_function = #[concept(function(attr) return attr.type.is_function end)]#
-local a_union = #[concept(function(attr) return attr.type.is_union end)]#
+local a_array            = #[concept(function(attr) return attr.type.is_array end)]#
+local a_enum_value       = #[concept(function(attr) return attr.type.is_enum end)]#
+local a_record_value     = #[concept(function(attr) return attr.type.is_record end)]#
+local a_non_aggregate    = #[concept(function(attr) return not attr.type.is_aggregate end)]#
+local a_pointer          = #[concept(function(attr) return attr.type.is_pointer end)]#
+local a_stringy          = #[concept(function(attr) return attr.type.is_cstring or attr.type.is_string end)]#
+local a_function         = #[concept(function(attr) return attr.type.is_function end)]#
+local a_union            = #[concept(function(attr) return attr.type.is_union end)]#
 
 -- specialized inspector functions
 local function inspect_union_value(value: a_union)
@@ -280,8 +280,10 @@ global function inspector(value: auto): string
 
     ## elseif value.type.is_array then
       return inspect_array_value(value)
+
+    ## else
+      return tostring('Unknown')
     ## end
   ## end
 
-  return tostring('Unknown')
 end
