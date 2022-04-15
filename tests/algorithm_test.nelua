@@ -55,4 +55,15 @@ nester.describe("algorithm", function()
       expect.truthy(v[i-1] >= v[i])
     end
   end)
+
+  nester.it("unpack", function()
+    local v: vector(integer) <close> = {3,1,4,2,5,6}
+    algorithm.unpackn(v, 0)
+    local a = algorithm.unpackn(v, 1)
+    assert(a == 3)
+    local a, b = algorithm.unpackn(v, 2)
+    assert(a == 3 and b == 1)
+    local a, b, c = algorithm.unpackn(v, 3)
+    assert(a == 3 and b == 1 and c == 4)
+  end)
 end)

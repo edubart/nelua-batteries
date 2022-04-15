@@ -8,15 +8,12 @@ require 'allocators.general'
 global algorithm: type = @record{}
 
 -- Concept used to pass contiguous containers by reference.
-local sortable_reference_concept: type = #[concept(function(x)
+local as_span_concept: type = #[concept(function(x)
   local container_type = x.type:implicit_deref_type()
-  if not container_type.is_contiguous then
+  if not container_type.is_contiguous or not container_type.subtype then
     return false, string.format("type '%s' cannot be a reference to a contiguous container", x.type)
   end
-  if container_type.is_sequence then
-    return false, 'sort does not support yet sequence containers'
-  end
-  return types.PointerType(container_type)
+  return span.value(container_type.subtype)
 end)]#
 
 -- Auxiliary macro to compare values being sorted.
@@ -45,9 +42,9 @@ The sort algorithm may not be in-place, that is,
 it may allocates an auxiliary buffer temporarily to perform the sort operation,
 use `heapsort` if you wish to avoid that.
 ]]
-function algorithm.sort(a: sortable_reference_concept, comp: auto): void
+function algorithm.sort(a: as_span_concept, comp: auto): void
   -- Tim Sort
-  local T: type = #[a.type.subtype.subtype]#
+  local T: type = #[a.type.subtype]#
   local n: usize = #a
   if n <= 1 then return end
   local width: usize = 0
@@ -132,7 +129,7 @@ The sort algorithm is not stable, that is,
 different elements considered equal by the given order may have their
 relative positions changed by the sort.
 ]]
-function algorithm.heapsort(a: sortable_reference_concept, comp: auto): void
+function algorithm.heapsort(a: as_span_concept, comp: auto): void
   -- Heap sort (as in http://en.wikibooks.org/wiki/Algorithm_implementation/Sorting/Heapsort)
   local n: isize = #a
   if n <= 1 then return end
@@ -167,7 +164,16 @@ function algorithm.heapsort(a: sortable_reference_concept, comp: auto): void
   end
 end
 
-function algorithm.removeif(a: sortable_reference_concept, pred: auto, param: auto): usize
+--[[
+Removes all elements satisfying criteria `pred` from contiguous container `a`,
+and returns the new size of the container after removing the elements.
+
+Removing is done by shifting the elements in such a way that the elements
+that are not to be removed appear in the beginning of the container.
+Relative order of the elements that remain is preserved
+and the physical size of the container is unchanged.
+]]
+function algorithm.removeif(a: as_span_concept, pred: auto, param: auto): usize
   local j: usize = 0
   local n: usize = (@usize)(#a)
   for i:usize=0,<(@usize)(#a) do
@@ -182,6 +188,19 @@ function algorithm.removeif(a: sortable_reference_concept, pred: auto, param: au
     end
   end
   return j
+end
+
+--[[
+Unpacks and returns the first `n` elements from contiguous container `a`.
+]]
+function algorithm.unpackn(a: as_span_concept, n: usize <comptime>)
+  ##[[
+  local rets = {}
+  for i=0,n.value-1 do
+    table.insert(rets, aster.KeyIndex{aster.Number{i}, aster.Id{'a'}})
+  end
+  ]]
+  return #[aster.unpack(rets)]#
 end
 
 return algorithm
