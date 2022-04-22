@@ -203,4 +203,12 @@ function algorithm.unpackn(a: as_span_concept, n: usize <comptime>)
   return #[aster.unpack(rets)]#
 end
 
+--[[
+Packs all elements of `...` and returns a fixed array with them.
+]]
+function algorithm.packn(...: varargs): auto
+  local T: type = #[select(1, ...).attr.type]#
+  return (@[]T){...}
+end
+
 return algorithm

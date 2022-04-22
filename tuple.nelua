@@ -1,0 +1,34 @@
+## local function make_tupleT(...)
+  local tupleT: type = @record{}
+  ##[[
+  for i=1,select('#',...) do
+    local fieldname = 'e'..(i-1)
+    local fieldtype = select(i, ...)
+    tupleT.value:add_field(fieldname, fieldtype)
+  end
+  ]]
+
+  function tupleT.__atindex(self: *tupleT, index: integer <comptime>): auto
+    return &self.#|'e'..index.value|#;
+  end
+
+  ## return tupleT
+## end
+
+global tuple: type = #[generalize(make_tupleT)]#
+
+function tuple.pack(...: varargs): auto
+  return (@tuple(#[aster.unpack(types.nodes_to_types{...})]#)){...}
+end
+
+function tuple.unpack(t: auto)
+  ##[[
+  local rets = {}
+  for _,field in ipairs(t.type.fields) do
+    table.insert(rets, aster.DotIndex{field.name, aster.Id{'t'}})
+  end
+  ]]
+  return #[aster.unpack(rets)]#
+end
+
+return tuple
