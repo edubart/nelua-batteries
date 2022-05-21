@@ -213,7 +213,7 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
       ## expect_string()
       fieldname = tmpstr
       ## expect_token':' expect_value(res.type.V)
-      res[fieldname] = v
+      res[string.copy(fieldname)] = v
       if err.size > 0 then return res, err, i end
       ## skip_comma_peek_char()
     end
