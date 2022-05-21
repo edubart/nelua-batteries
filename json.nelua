@@ -5,38 +5,22 @@ This module contains utilities to parse chunks JSON texts into
 Nelua types and vice-versa.
 
 TODO:
-* The function may raise runtime errors when parsing invalid numbers.
-* The function may raise runtime errors when parsing integer that overflows.
 * Handle allocation errors on `json.emit`.
 * Escape strings in `json.emit`.
 ]]
 
-require 'string'
+local string = require 'string'
+local strconv = require 'detail.strconv'
+local strchar = require 'detail.strchar'
 
 -- The JSON module.
 global json = @record{}
 
--- Helper to check if `c` is a space.
-local function isspace(c: byte): boolean <inline>
-  return c == ' '_b or c-'\t'_b < 5
-end
-
--- Helper to check if `c` is a hexadecimal digit (matches [0-9a-fA-F]).
-local function isxdigit(c: byte): boolean <inline>
-  return c-'0'_b < 10 or -- [0-9]
-         (c|32)-'a'_b < 6 -- [a-fA-F]
-end
-
 -- Helper to check if `c` is a number digit (matches [A-Fa-f.+-]).
 local function isnumdigit(c: byte): boolean <inline>
-  return isxdigit(c) or -- hex digit
+  return strchar.isxdigit(c) or -- hex digit
          c == '+'_b or c == '-'_b or -- sign
          c == '.'_b -- fractional
-end
-
--- Helper to check if `c` is a lowercase character (matches [a-z]).
-local function islower(c: byte): boolean <inline>
-  return c-'a'_b < 26
 end
 
 -- Helper to convert an integer to its corresponding UTF-8 byte sequence.
@@ -84,12 +68,14 @@ local function unescape(s: string): (string, string)
         case 'r'_b then ns.data[j] = '\r'_b
         case 'u'_b then
           for k: usize=i,<i+4 do
-            if k >= s.size or not isxdigit(s.data[k]) then
+            if k >= s.size or not strchar.isxdigit(s.data[k]) then
               ns:destroy()
-              return ns, 'expected 4 hex digits in utf8 sequence'
+              return ns, 'expected 4 hexadecimal digits in utf8 sequence'
             end
           end
-          local utf8buf: [8]byte, len: int32 = utf8esc(tointeger((@string){data=&s.data[i],size=4}, 16))
+          local ok: boolean, hex: integer = strconv.str2int((@string){data=&s.data[i],size=4}, 16)
+          if not ok then return ns, 'malformed hexadecimal integer in utf8 sequence' end
+          local utf8buf: [8]byte, len: int32 = utf8esc(hex)
           memory.copy(&ns.data[j], &utf8buf[0], len)
           i = i + 4
           j = j + (@usize)(len) - 1
@@ -140,7 +126,7 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
   local tmpstr: string, tmpbool: boolean
   -- macros utils
   ## local function skip_whitespaces()
-    while i < slen and isspace(s[i]) do i = i + 1 end
+    while i < slen and strchar.isspace(s[i]) do i = i + 1 end
   ## end
   ## local function peek_char()
     c = i < slen and s[i] or 0
@@ -178,17 +164,23 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
   ## end
   ## local function expect_boolean()
     tmpinit = i
-    while i < slen and islower(s[i]) do i = i + 1 end
+    while i < slen and strchar.islower(s[i]) do i = i + 1 end
     tmpstr = string{data=&s[tmpinit], size=i-tmpinit}
     ## skip_whitespaces()
   ## end
   ## local function expect_value(vtype)
     ## if vtype.is_float then
       ## expect_number()
-      local v: #[vtype]# = tonumber(tmpstr)
+      local ok: boolean, v: #[vtype]# = strconv.str2num(tmpstr)
+      if not ok then
+        err = 'malformed number'
+      end
     ## elseif vtype.is_integral then
       ## expect_number()
-      local v: #[vtype]# = tointeger(tmpstr)
+      local ok: boolean, v: #[vtype]# = strconv.str2int(tmpstr, 10)
+      if not ok then
+        err = 'malformed integer'
+      end
     ## elseif vtype.is_boolean then
       ## expect_boolean()
       local v: #[vtype]# = tmpstr == 'true'

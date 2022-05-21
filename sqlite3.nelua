@@ -101,7 +101,7 @@ local SQLite3.OpenFlags: type = @enum(int32){
 }
 
 -- Close statement (used to cleanup for loops).
-function SQLite3.Stmt:__close()
+function SQLite3.Stmt:__close(): void
   if not self.stmt then return end
   local res: SQLite3.Error = sqlite3_finalize(self.stmt)
   assert(res == SQLite3.Error.OK, 'failed to close statement')
@@ -149,6 +149,12 @@ function SQLite3:close(): (SQLite3.Error, string)
   end
   self.db = nilptr
   return res, (@string){}
+end
+
+function SQLite3:__close()
+  if self and self.db then
+    self:close()
+  end
 end
 
 -- Returns true if database is open, false otherwise.
