@@ -116,9 +116,9 @@ end
 --[[
 Opens (or creates if it does not exist) an SQLite database with name `filename`
 and returns its handle.
-In case of an error, the function returns a closed database, an error code and an error message.
+In case of an error, the function returns a closed database, an error message and an error code.
 ]]
-function SQLite3.open(filename: string, flags: facultative(int32)): (SQLite3, SQLite3.Error, string)
+function SQLite3.open(filename: string, flags: facultative(int32)): (SQLite3, string, SQLite3.Error)
   ## if flags.type.is_niltype then
   local flags: int32 = SQLite3.OpenFlags.READWRITE | SQLite3.OpenFlags.CREATE
   ## end
@@ -132,24 +132,24 @@ function SQLite3.open(filename: string, flags: facultative(int32)): (SQLite3, SQ
     else
       errmsg = sqlite3_errstr(status)
     end
-    return SQLite3{}, status, errmsg
+    return SQLite3{}, errmsg, status
   end
-  return SQLite3{db=db}, status, (@string){}
+  return SQLite3{db=db}, (@string){}, status
 end
 
 --[[
 Closes a database.
 All SQL statements prepared using `db:prepare()` should have been finalized before this function is called.
-Returns `sqlite3.OK` on success or else a numerical error code.
+Returns true on success, otherwise false, plus and error message and an error code.
 ]]
-function SQLite3:close(): (SQLite3.Error, string)
+function SQLite3:close(): (boolean, string, SQLite3.Error)
   assert(self.db, 'attempt to use a closed sqlite database')
   local res: SQLite3.Error = sqlite3_close(self.db)
   if res ~= SQLite3.Error.OK then
-    return res, sqlite3_errmsg(self.db)
+    return false, sqlite3_errmsg(self.db), res
   end
   self.db = nilptr
-  return res, (@string){}
+  return true, (@string){}, res
 end
 
 function SQLite3:__close()
@@ -166,7 +166,7 @@ end
 --[[
 Compiles and executes the SQL statement(s) given in string `sql`.
 The statements are simply executed one after the other and not stored.
-The function returns `sqlite3.OK` on success or else a numerical error code.
+The function true on success, otherwise false, plus and error message and an error code.
 
 If one or more of the SQL statements are queries,
 then the callback function specified in `func` is invoked once for each row of the query result
@@ -179,7 +179,7 @@ all subsequent SQL statements are skipped and db:exec() returns sqlite3.ABORT.
 ]]
 function SQLite3:exec(sql: string,
                       func: facultative(function(udata: pointer, ncols: cint, values: *[0]cstring, names: *[0]cstring): cint),
-                      udata: facultative(pointer)): (SQLite3.Error, string)
+                      udata: facultative(pointer)): (boolean, string, SQLite3.Error)
   assert(self.db, 'attempt to use a closed sqlite database')
   local cerrmsg: cstring
   ## if func.type.is_niltype then
@@ -191,9 +191,12 @@ function SQLite3:exec(sql: string,
     ## end
     local res: SQLite3.Error = sqlite3_exec(self.db, sql, (@ExecCallback)(func), udata, &cerrmsg)
   ## end
-  local errmsg: string = string.copy(cerrmsg)
-  sqlite3_free(cerrmsg)
-  return res, errmsg
+  if res ~= SQLite3.Error.OK then
+    local errmsg: string = string.copy(cerrmsg)
+    sqlite3_free(cerrmsg)
+    return false, errmsg, res
+  end
+  return true, (@string){}, res
 end
 
 -- Record used to store state of `urows`.
@@ -251,18 +254,18 @@ function SQLite3:urows(sql: string, ...: varargs): (auto, URowsState, auto, SQLi
   return urows_next, state, T(), SQLite3.Stmt{state.stmt}
 end
 
--- Like `urows` but only for one row, returns `true if a row is found plus its values.
+-- Like `urows` but only for one row, returns `true` if a row is found plus its values.
 function SQLite3:urow(sql: string, ...: varargs)
   local urows_next, state, k, stmt <close> = self:urows(sql, ...)
   return urows_next(state, k)
 end
 
-function SQLite3:cacheflush(): (boolean, string)
+function SQLite3:cacheflush(): (boolean, string, SQLite3.Error)
   local res: SQLite3.Error = sqlite3_db_cacheflush(self.db)
   if res ~= SQLite3.Error.OK then
-    return false, sqlite3_errmsg(self.db)
+    return false, sqlite3_errmsg(self.db), res
   end
-  return true, (@string){}
+  return true, (@string){}, res
 end
 
 return SQLite3

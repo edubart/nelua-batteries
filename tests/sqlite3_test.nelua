@@ -3,23 +3,23 @@ require 'os'
 
 local SQLite3 = require 'sqlite3'
 
-local db: SQLite3, err: SQLite3.Error, errmsg: string
+local db: SQLite3, errcode: SQLite3.Error, errmsg: string
 
 nester.describe("sqlite3", function()
   nester.it("new database", function()
-    db, err = SQLite3.open('testdb.sqlite3')
-    expect.equal(err, SQLite3.Error.OK)
+    db, errmsg, errcode = SQLite3.open('testdb.sqlite3')
+    expect.equal(errcode, SQLite3.Error.OK)
     expect.truthy(db:isopen())
-    expect.equal(db:close(), SQLite3.Error.OK)
+    expect.equal(db:close(), true)
 
-    db, err =  SQLite3.open('testdb.sqlite3', SQLite3.OpenFlags.READWRITE)
-    expect.equal(err, SQLite3.Error.OK)
-    expect.equal(db:close(), SQLite3.Error.OK)
+    db, errmsg, errcode =  SQLite3.open('testdb.sqlite3', SQLite3.OpenFlags.READWRITE)
+    expect.equal(errcode, SQLite3.Error.OK)
+    expect.equal(db:close(), true)
   end)
 
   nester.before(function(name: string)
-    db, err, errmsg = SQLite3.open('testdb.sqlite3')
-    assert(db:isopen(), err)
+    db, errmsg, errcode = SQLite3.open('testdb.sqlite3')
+    assert(db:isopen(), errcode)
   end)
 
   nester.after(function(name: string)
