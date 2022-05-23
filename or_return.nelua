@@ -1,0 +1,20 @@
+--[[
+Utility that forward `expr` if its second result is an empty error message,
+otherwise returns the current scope function with its first return zero initialized,
+plus the error message.
+]]
+## function or_return(expr)
+  local res, errmsg: string = #[expr]#
+  if #errmsg > 0 then
+    ##[[
+    local rettype1 =
+      context.state.funcscope and
+      context.state.funcscope.funcsym and
+      context.state.funcscope.funcsym.type and
+      context.state.funcscope.funcsym.type.rettypes[1]
+    static_assert(rettype1, 'current function has no typed return')
+    ]]
+    return (@#[rettype1]#)(), errmsg
+  end
+  in res
+## end
