@@ -1,0 +1,55 @@
+global signal: type = @record{}
+
+local signal.SIGABRT: cint <const,cimport,cinclude'<signal.h>'>
+local signal.SIGFPE: cint <const,cimport,cinclude'<signal.h>'>
+local signal.SIGILL: cint <const,cimport,cinclude'<signal.h>'>
+local signal.SIGINT: cint <const,cimport,cinclude'<signal.h>'>
+local signal.SIGSEGV: cint <const,cimport,cinclude'<signal.h>'>
+local signal.SIGTERM: cint <const,cimport,cinclude'<signal.h>'>
+
+local signal.SIG_DFL: function(cint): void <const,cimport,cinclude'<signal.h>'>
+local signal.SIG_IGN: function(cint): void <const,cimport,cinclude'<signal.h>'>
+local signal.SIG_ERR: function(cint): void <const,cimport,cinclude'<signal.h>'>
+
+-- Returns last errno message plus its code.
+local function geterrno(): (string, integer)
+  local errno: cint <cimport,cinclude'<errno.h>'>
+  local function strerror(errnum: cint): cstring <cimport,cinclude'<string.h>'> end
+  return strerror(errno), errno
+end
+
+--[[
+Setup application to call `handler` when it receives signal `sig`.
+Returns true when success, otherwise false plus error message and code.
+]]
+function signal.setsignal(sig: cint, handler: function(cint): void): (boolean, string, integer)
+  ## cinclude '@unistd.h'
+  ## cemit '#if defined(_POSIX_VERSION)'
+  local sigset_t: type <cimport,cinclude'<signal.h>',cincomplete> = @record{}
+  local sigaction_t: type <cimport,cinclude'<signal.h>',ctypedef'sigaction',cincomplete> = @record{
+    sa_handler: function(cint),
+    sa_mask: sigset_t,
+  }
+  local function sigemptyset(set: *sigset_t): cint <cimport,cinclude'<signal.h>'> end
+  local function sigaction(sig: cint, act: *sigaction_t, oact: *sigaction_t): cint <cimport, nodecl> end
+  local sa: sigaction_t = {sa_handler = handler}
+  sigemptyset(&sa.sa_mask) -- do not mask any signal
+  local res: cint = sigaction(sig, &sa, nilptr)
+  if res ~= 0 then return false, geterrno() end
+  ## cemit '#else'
+  local function c_signal(sig: cint, handler: function(cint): void): function(cint): void <cimport'signal',cinclude'<signal.h>'> end
+  local res: function(cint): void = c_signal(sig, handler)
+  if res == signal.SIG_ERR then return false, geterrno() end
+  ## cemit '#endif'
+  return true, (@string){}, 0
+end
+
+-- Raises signal `sig`.
+function signal.raise(sig: cint): (boolean, string, integer)
+  local function c_raise(sig: cint): cint <cimport'raise',cinclude'<signal.h>'> end
+  local res: cint = c_raise(sig)
+  if res ~= 0 then return false, geterrno() end
+  return true, (@string){}, 0
+end
+
+return signal

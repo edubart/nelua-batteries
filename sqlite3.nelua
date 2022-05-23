@@ -28,6 +28,7 @@ local function sqlite3_column_double(a1: *sqlite3_stmt, iCol: cint): float64 <ci
 local function sqlite3_column_int64(a1: *sqlite3_stmt, iCol: cint): int64 <cimport,nodecl> end
 local function sqlite3_column_text(a1: *sqlite3_stmt, iCol: cint): *cuchar <cimport,nodecl> end
 local function sqlite3_finalize(pStmt: *sqlite3_stmt): cint <cimport,nodecl> end
+local function sqlite3_db_cacheflush(a1: *sqlite3): cint <cimport,nodecl> end
 
 ----------------------------------------------------------------------------------------------------
 -- SQLite3 module
@@ -254,6 +255,14 @@ end
 function SQLite3:urow(sql: string, ...: varargs)
   local urows_next, state, k, stmt <close> = self:urows(sql, ...)
   return urows_next(state, k)
+end
+
+function SQLite3:cacheflush(): (boolean, string)
+  local res: SQLite3.Error = sqlite3_db_cacheflush(self.db)
+  if res ~= SQLite3.Error.OK then
+    return false, sqlite3_errmsg(self.db)
+  end
+  return true, (@string){}
 end
 
 return SQLite3
