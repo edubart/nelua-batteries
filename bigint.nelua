@@ -106,7 +106,8 @@ local function mbedtls_entropy_func(data: pointer, output: *cuchar, len: csize):
 -- Utility to check and raise big integer errors.
 local function mbedtls_check(res: cint): void
   if unlikely(res ~= 0) then
-    error(mbedtls_low_level_strerr(res))
+    local err: string <close> = string.format("BigInt ERROR: %s", mbedtls_low_level_strerr(res))
+    error(err)
   end
 end
 
@@ -155,18 +156,20 @@ function BigInt:__close(): void
 end
 
 -- Returns the total storage size in bytes.
-function BigInt.__len(self: BigInt): usize
+function BigInt:__len(): usize
+  if not self.mpi then return 0 end
   return mbedtls_mpi_size(self.mpi)
 end
 
 -- Return the total storage size in bits.
 function BigInt.bitlen(x: BigInt_convertible): usize
   ## ensure_bigints(x)
+  if not x.mpi then return 0 end
   return mbedtls_mpi_bitlen(x.mpi)
 end
 
 -- Returns a new big integer with zero value stored.
-function BigInt.zero(): BigInt
+function BigInt.new(): BigInt
   local self: BigInt
   self.mpi = new(@mbedtls_mpi)
   mbedtls_mpi_init(self.mpi)
@@ -175,8 +178,10 @@ end
 
 -- Returns a clone of a big integer.
 function BigInt.copy(x: BigInt): BigInt
-  local res: BigInt = BigInt.zero()
-  mbedtls_check(mbedtls_mpi_copy(res.mpi, x.mpi))
+  local res: BigInt = BigInt.new()
+  if x.mpi then
+    mbedtls_check(mbedtls_mpi_copy(res.mpi, x.mpi))
+  end
   return res
 end
 
@@ -187,7 +192,7 @@ function BigInt.frombytes(data: string, little_endian: facultative(boolean)): Bi
   ## if little_endian.type.is_niltype then
   local little_endian: boolean = false
   ## end
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   if little_endian then
     mbedtls_check(mbedtls_mpi_read_binary_le(res.mpi, data.data, data.size))
   else
@@ -197,7 +202,7 @@ function BigInt.frombytes(data: string, little_endian: facultative(boolean)): Bi
 end
 
 function BigInt.fromstring(s: string, base: facultative(int32)): BigInt
-  local self: BigInt = BigInt.zero()
+  local self: BigInt = BigInt.new()
   ## if base.type.is_niltype then
   local base: int32
   if #s >= 2 and s:subview(1,2) == '0x' then -- hexadecimal
@@ -250,7 +255,7 @@ end
 function BigInt.frominteger(x: integer): BigInt
   -- for some reason 'mbedtls_mpi_lset' does not work with negative values on TCC compiler
   if x >= 0 and x <= 0x7fffffff then
-    local self: BigInt = BigInt.zero()
+    local self: BigInt = BigInt.new()
     if x ~= 0 then
       mbedtls_check(mbedtls_mpi_lset(self.mpi, x))
     end
@@ -355,21 +360,21 @@ end
 
 function BigInt.__add(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_add_mpi(res.mpi, a.mpi, b.mpi))
   return res
 end
 
 function BigInt.__sub(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_sub_mpi(res.mpi, a.mpi, b.mpi))
   return res
 end
 
 function BigInt.__mul(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_mul_mpi(res.mpi, a.mpi, b.mpi))
   return res
 end
@@ -377,7 +382,7 @@ end
 -- Integer truncate division (rounding towards 0).
 function BigInt.tdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_div_mpi(res.mpi, nilptr, a.mpi, b.mpi))
   return res
 end
@@ -419,7 +424,7 @@ end
 -- Integer truncate modulo operation (rounding towards 0).
 function BigInt.tmod(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   local a_negative: boolean, b_negative: boolean = a < 0, b < 0
   if not a_negative and not b_negative then
     mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
@@ -437,7 +442,7 @@ end
 -- Integer floor modulo operation (rounding towards minus infinity).
 function BigInt.fmod(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   local a_negative: boolean, b_negative: boolean = a < 0, b < 0
   if not a_negative and not b_negative then
     mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
@@ -522,7 +527,7 @@ end
 
 function BigInt.__bor(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   for i: usize=0,<math.max(a:bitlen(), b:bitlen()) do
     local bit: cint = mbedtls_mpi_get_bit(a.mpi, i) | mbedtls_mpi_get_bit(b.mpi, i)
     mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, bit))
@@ -532,7 +537,7 @@ end
 
 function BigInt.__band(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   for i: usize=0,<math.max(a:bitlen(), b:bitlen()) do
     local bit: cint = mbedtls_mpi_get_bit(a.mpi, i) & mbedtls_mpi_get_bit(b.mpi, i)
     mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, bit))
@@ -542,7 +547,7 @@ end
 
 function BigInt.__bxor(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   for i: usize=0,<math.max(a:bitlen(), b:bitlen()) do
     local bit: cint = mbedtls_mpi_get_bit(a.mpi, i) ~ mbedtls_mpi_get_bit(b.mpi, i)
     mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, bit))
@@ -570,8 +575,8 @@ end
 
 function BigInt.abs(a: BigInt_convertible): BigInt
   ## ensure_bigints(a)
-  local res: BigInt = BigInt.zero()
-  local b: BigInt <close> = BigInt.zero()
+  local res: BigInt = BigInt.new()
+  local b: BigInt <close> = BigInt.new()
   mbedtls_check(mbedtls_mpi_add_abs(res.mpi, a.mpi, b.mpi))
   return res
 end
@@ -579,8 +584,8 @@ end
 -- Computes the division and modulo operations together.
 function BigInt.divmod(dividend: BigInt_convertible, divisor: BigInt_convertible): (BigInt, BigInt)
   ## ensure_bigints(dividend, divisor)
-  local quotient: BigInt = BigInt.zero()
-  local remainder: BigInt = BigInt.zero()
+  local quotient: BigInt = BigInt.new()
+  local remainder: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_div_mpi(quotient.mpi, remainder.mpi, dividend.mpi, divisor.mpi))
   return quotient, remainder
 end
@@ -588,7 +593,7 @@ end
 -- Computes the modular exponentiation.
 function BigInt.expmod(base: BigInt_convertible, exponent: BigInt_convertible, n: BigInt_convertible): BigInt
   ## ensure_bigints(base, exponent, n)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_exp_mod(res.mpi, base.mpi, exponent.mpi, n.mpi, nilptr))
   return res
 end
@@ -596,7 +601,7 @@ end
 -- Computes the modular inverse.
 function BigInt.invmod(a: BigInt_convertible, n: BigInt_convertible): BigInt
   ## ensure_bigints(a, n)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_inv_mod(res.mpi, a.mpi, n.mpi))
   return res
 end
@@ -604,7 +609,7 @@ end
 -- Computes the greatest common divisor.
 function BigInt.gcd(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_gcd(res.mpi, a.mpi, b.mpi))
   return res
 end
@@ -616,14 +621,6 @@ function BigInt.lcm(a: BigInt_convertible, b: BigInt_convertible): BigInt
   local nume: BigInt <close> = ab:abs()
   local deno: BigInt <close> = a:gcd(b)
   return nume /// deno
-end
-
---------------------------------------------------------------------------------
--- Extra metamethods
-
--- Allows to implicitly convert integer and strings to big integers.
-function BigInt.__convert(v: BigInt_convertible): BigInt
-  return BigInt.from(v)
 end
 
 --------------------------------------------------------------------------------
@@ -646,7 +643,7 @@ end
 function BigInt.randomrange(min: integer, max: BigInt_convertible): BigInt
   ## ensure_bigints(max)
   ensure_rng_initialized()
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_random(res.mpi, min, max.mpi, mbedtls_ctr_drbg_random, &rng))
   return res
 end
@@ -654,7 +651,7 @@ end
 -- Returns a random big int with `size` bytes.
 function BigInt.randombytes(size: usize): BigInt
   ensure_rng_initialized()
-  local res: BigInt = BigInt.zero()
+  local res: BigInt = BigInt.new()
   mbedtls_check(mbedtls_mpi_fill_random(res.mpi, size, mbedtls_ctr_drbg_random, &rng))
   return res
 end

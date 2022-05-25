@@ -1,8 +1,18 @@
 local BigInt = require 'bigint'
 
-do -- zero
-  local x <close> = BigInt.zero()
+do -- empty
+  local x: BigInt
+  assert(#x == 0)
+  assert(x:bitlen() == 0)
   assert(x == 0)
+
+  local one: BigInt <close> = x + 1 assert(one == 1)
+end
+
+do -- new
+  local x = BigInt.new()
+  assert(x == 0)
+  x:destroy()
 end
 
 do -- frominteger
@@ -124,11 +134,6 @@ end
 do -- abs
   local x <close> = BigInt.abs(-1337) assert(x == 1337)
   local x <close> = BigInt.abs(1337) assert(x == 1337)
-end
-
-do -- implicit conversion
-  local x: BigInt <close> = 1337 assert(x == 1337)
-  local x: BigInt <close> = '1337' assert(x == 1337)
 end
 
 do -- randombytes
