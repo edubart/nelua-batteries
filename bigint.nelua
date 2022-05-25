@@ -214,6 +214,39 @@ function BigInt.fromstring(s: string, base: facultative(int32)): BigInt
   return self
 end
 
+--[[
+Creates a big integer from a decimal string.
+The returned big integer is multiplied by `10^decimal_places` so decimals are not lost.
+Any decimals after `decimal_places` decimals are discarded.
+]]
+function BigInt.fromdecimal(s: string, decimal_places: integer): BigInt
+  local found_decimal: boolean
+  local n_decimals: integer
+  local sb: stringbuilder <close>
+  -- filter string by removing '.'
+  for i: usize=0,<s.size do
+    local c: byte = s.data[i]
+    if c == '.'_b then
+      found_decimal = true
+    else
+      sb:writebyte(c)
+      if found_decimal then
+        n_decimals = n_decimals + 1
+      end
+    end
+  end
+  if decimal_places > n_decimals then
+    -- add zeros past decimal place
+    for i: usize=0,<decimal_places-n_decimals do
+      sb:writebyte('0'_b)
+    end
+  elseif decimal_places < n_decimals then
+    -- too much decimal places, discard extra ones
+    sb:rollback(n_decimals - decimal_places)
+  end
+  return BigInt.fromstring(sb:view())
+end
+
 function BigInt.frominteger(x: integer): BigInt
   -- for some reason 'mbedtls_mpi_lset' does not work with negative values on TCC compiler
   if x >= 0 and x <= 0x7fffffff then
@@ -273,7 +306,16 @@ function BigInt.tostring(x: BigInt_convertible, base: facultative(int32)): strin
     mbedtls_check(mbedtls_mpi_write_string(x.mpi, base, buf.data, buf.size, &len))
     sb:commit(len-1)
   end
-  return sb:view():lower()
+  -- remove trailing zeros
+  local s: string = sb:view()
+  local j: usize = 0
+  if s.size > 0 then
+    for i: usize=0,<s.size-1 do
+      if s.data[i] ~= '0'_b then break end
+      j = i + 1
+    end
+  end
+  return s:subview(j+1, -1):lower()
 end
 
 -- Returns the big integer as an integer.
@@ -332,18 +374,109 @@ function BigInt.__mul(a: BigInt_convertible, b: BigInt_convertible): BigInt
   return res
 end
 
-function BigInt.__idiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
+-- Integer truncate division (rounding towards 0).
+function BigInt.tdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
   local res: BigInt = BigInt.zero()
   mbedtls_check(mbedtls_mpi_div_mpi(res.mpi, nilptr, a.mpi, b.mpi))
   return res
 end
 
-function BigInt.__mod(a: BigInt_convertible, b: BigInt_convertible): BigInt
+-- Integer floor division (rounding towards minus infinity).
+function BigInt.fdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  ## ensure_bigints(a, b)
+  local q: BigInt = a /// b
+  local qb: BigInt <close> = q * b
+  if qb == a then return q end
+  defer q:destroy() end
+  return q - ((a < 0 and 1 or 0) ~ (b < 0 and 1 or 0))
+end
+
+-- Integer ceil division (rounding towards infinity).
+function BigInt.cdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  ## ensure_bigints(a, b)
+  local q: BigInt = a /// b
+  local qb: BigInt <close> = q * b
+  if qb == a then return q end
+  defer q:destroy() end
+  return q + (1 - ((a < 0 and 0 or 1) ~ (b < 0 and 0 or 1)))
+end
+
+-- Integer round division (rounding towards nearest integer).
+function BigInt.rdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  ## ensure_bigints(a, b)
+  local b_div2: BigInt <close> = b /// 2
+  local nume: BigInt
+  defer nume:destroy() end
+  if ((a < 0 and 1 or 0) ~ (b < 0 and 1 or 0)) == 1 then
+    nume = a - b_div2
+  else
+    nume = a + b_div2
+  end
+  return nume /// b
+end
+
+-- Integer truncate modulo operation (rounding towards 0).
+function BigInt.tmod(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
   local res: BigInt = BigInt.zero()
-  mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
+  local a_negative: boolean, b_negative: boolean = a < 0, b < 0
+  if not a_negative and not b_negative then
+    mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
+  else -- at least one is negative
+    local a_abs <close>, b_abs <close> = a:abs(), b:abs()
+    mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a_abs.mpi, b_abs.mpi))
+    if a_negative ~= b_negative then
+      defer res:destroy() end
+      return 0 - res
+    end
+  end
   return res
+end
+
+-- Integer floor modulo operation (rounding towards minus infinity).
+function BigInt.fmod(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  ## ensure_bigints(a, b)
+  local res: BigInt = BigInt.zero()
+  local a_negative: boolean, b_negative: boolean = a < 0, b < 0
+  if not a_negative and not b_negative then
+    mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
+  else -- at least one is negative
+    local a_abs <close>, b_abs <close> = a:abs(), b:abs()
+    mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a_abs.mpi, b_abs.mpi))
+    if a_negative ~= b_negative then
+      defer res:destroy() end
+      if a_negative and not b_negative then
+        return b - res
+      elseif not a_negative and b_negative then
+        return res + b
+      end
+    elseif a_negative then
+      defer res:destroy() end
+      return 0 - res
+    end
+  end
+  return res
+end
+
+-- Alias for as `tdiv` (to allow using '///' operator).
+function BigInt.__tdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  return BigInt.tdiv(a, b)
+end
+
+-- Alias for as `fdiv` (to allow using '//' operator).
+function BigInt.__idiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  return BigInt.fdiv(a, b)
+end
+
+-- Alias for as `tmod` (to allow using '%%%' operator).
+function BigInt.__tmod(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  return BigInt.tmod(a, b)
+end
+
+-- Alias for as `fmod` (to allow using '%' operator).
+function BigInt.__mod(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  return BigInt.fmod(a, b)
 end
 
 function BigInt.__pow(base: BigInt_convertible, exp: integer): BigInt
@@ -443,6 +576,7 @@ function BigInt.abs(a: BigInt_convertible): BigInt
   return res
 end
 
+-- Computes the division and modulo operations together.
 function BigInt.divmod(dividend: BigInt_convertible, divisor: BigInt_convertible): (BigInt, BigInt)
   ## ensure_bigints(dividend, divisor)
   local quotient: BigInt = BigInt.zero()
@@ -481,7 +615,7 @@ function BigInt.lcm(a: BigInt_convertible, b: BigInt_convertible): BigInt
   local ab: BigInt <close> = a * b
   local nume: BigInt <close> = ab:abs()
   local deno: BigInt <close> = a:gcd(b)
-  return nume // deno
+  return nume /// deno
 end
 
 --------------------------------------------------------------------------------
