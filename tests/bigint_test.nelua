@@ -1,0 +1,169 @@
+local BigInt = require 'bigint'
+
+do -- zero
+  local x <close> = BigInt.zero()
+  assert(x == 0)
+end
+
+do -- frominteger
+  local x <close> = BigInt.frominteger(2) assert(x == 2)
+end
+
+do -- fromstring
+  local x <close> = BigInt.fromstring('2') assert(x == 2)
+  local x <close> = BigInt.fromstring('0000ffff', 16) assert(x == 0xffff)
+end
+
+do -- frombytes
+  local x <close> = BigInt.frombytes('\x13\x37') assert(x == 0x1337)
+  local x <close> = BigInt.frombytes('\x13\x37', true) assert(x == 0x3713)
+end
+
+do -- from
+  local x <close> = BigInt.from(1) assert(x == 1)
+  local x <close> = BigInt.from(0x7fffffff) assert(x == 0x7fffffff)
+  local x <close> = BigInt.from('0x7fffffff') assert(x == 0x7fffffff)
+  local x <close> = BigInt.from('2147483647') assert(x == 2147483647)
+end
+
+do -- copy
+  local x <close> = BigInt.from(0x1337)
+  local y <close> = x:copy()
+  assert(x == y)
+end
+
+do -- tointeger
+  assert(BigInt.tointeger('0x7fffffff') == 0x7fffffff)
+end
+
+do -- tobytes
+  local s <close> = BigInt.tobytes('0x1337') assert(s == '\x13\x37')
+  local s <close> = BigInt.tobytes('0x1337', true) assert(s == '\x37\x13')
+end
+
+do -- tostring
+  local b10 <close> = BigInt.tostring(0x7fffffff) assert(b10 == '2147483647')
+  local b16 <close> = BigInt.tostring(0x7fffffff, 16) assert(b16 == '7fffffff')
+  local b2 <close> = BigInt.tostring(9, 2) assert(b2 == '1001')
+end
+
+do -- comparison
+  local i1 <close> = BigInt.from(1)
+  local i2 <close> = BigInt.from(2)
+  assert(i1 == i1) assert(not (i1 == i2))
+  assert(i1 ~= i2) assert(not (i1 ~= i1))
+  assert(i1 <= i1) assert(i1 <= i2) assert(not (i1 >= i2))
+  assert(i1 >= i1) assert(i2 >= i1) assert(not (i2 <= i1))
+  assert(i1 < i2) assert(not (i1 < i1)) assert(not (i2 < i1))
+  assert(i2 > i1) assert(not (i1 > i1)) assert(not (i1 > i2))
+end
+
+do -- arithmetic operations
+  local i2 <close> = BigInt.from(2)
+  local i3 <close> = BigInt.from(3)
+  local i5 <close> = BigInt.from(5)
+  local i18 <close> = BigInt.from(18)
+  local x <close> = -i3 assert(x == -3)
+  local x <close> = i3 + i5 assert(x == 8)
+  local x <close> = i5 - i3 assert(x == 2)
+  local x <close> = i3 * i5 assert(x == 15)
+  local x <close> = i18 // i5 assert(x == i3)
+  local x <close> = i18 % i5 assert(x == i3)
+  local x <close> = i2 ^ 1 assert(x == 2)
+  local x <close> = i2 ^ 2 assert(x == 4)
+  local x <close> = i2 ^ 3 assert(x == 8)
+  local x <close> = i2 ^ 5 assert(x == 32)
+end
+
+do -- bitwise shifts
+  local i15 <close> = BigInt.from(15)
+  local x <close> = i15 << 0 assert(x == 15)
+  local x <close> = i15 << 1 assert(x == 30)
+  local x <close> = i15 << 2 assert(x == 60)
+
+  local x <close> = i15 >> 0 assert(x == 15)
+  local x <close> = i15 >> 1 assert(x == 7)
+  local x <close> = i15 >> 2 assert(x == 3)
+
+  local m15 <close> = BigInt.from(-15)
+  local x <close> = m15 << 0 assert(x == -15)
+  local x <close> = m15 << 1 assert(x == -30)
+  local x <close> = m15 << 2 assert(x == -60)
+end
+
+do -- bitwise opeations
+  local x <close> =  BigInt.__bor(0b01010, 0b10010) assert(x == 0b11010)
+  local x <close> = BigInt.__band(0b01010, 0b10010) assert(x == 0b00010)
+  local x <close> = BigInt.__bxor(0b01010, 0b10011) assert(x == 0b11001)
+  local x <close> = BigInt.__bnot(0b11010) assert(x == 0b00101)
+end
+
+do -- divmod
+  local q <close>, r <close> = BigInt.divmod(17, 5)
+  assert(q == 3) assert(r == 2)
+end
+
+do -- expmod
+  local x <close> = BigInt.expmod(11, 7, 3) assert(x == 2)
+end
+
+do -- invmod
+  local x <close> = BigInt.invmod(11, 3) assert(x == 2)
+end
+
+do -- gcd
+  local x <close> = BigInt.gcd(36, 20) assert(x == 4)
+end
+
+do -- lcm
+  local x <close> = BigInt.lcm(21, 6) assert(x == 42)
+end
+
+do -- abs
+  local x <close> = BigInt.abs(-1337) assert(x == 1337)
+  local x <close> = BigInt.abs(1337) assert(x == 1337)
+end
+
+do -- implicit conversion
+  local x: BigInt <close> = 1337 assert(x == 1337)
+  local x: BigInt <close> = '1337' assert(x == 1337)
+end
+
+do -- randombytes
+  local x: BigInt <close> = BigInt.randombytes(32)
+  assert(#x == 32)
+end
+
+do -- randomrange
+  local x: BigInt <close> = BigInt.randomrange(0, 2)
+  assert(x >= 0 and x <= 1)
+end
+
+## if not pragmas.nogc then
+do -- RSA test
+  -- 1. Choose two distinct primes
+  local p = BigInt.from('5011956100955230700919988831')
+  local q = BigInt.from('5989833698158308593254005067')
+  print('p = ' .. tostring(p))
+  print('q = ' .. tostring(q))
+
+  -- 2. Compute n = p * q
+  local n = p * q
+  print('n = ' .. tostring(n))
+  assert(n == BigInt.from('30020783547191766561527759475184666413598963507657406677'))
+
+  -- 3. Compute the totient
+  local phi_n = BigInt.lcm(p - 1, q - 1)
+  print('phi_n = ' .. tostring(phi_n))
+  assert(phi_n == BigInt.from('5003463924531961093587959910697146102414237368913902130'))
+
+  -- 4. Choose any number e that 1 < e < phi_n and is coprime to phi_n
+  local e = BigInt.from('65537')
+  print('e = ' .. tostring(e))
+
+  -- 5. Compute d, the modular multiplicative inverse
+  local d = BigInt.invmod(e, phi_n)
+  print('d = ' .. tostring(d))
+  assert(d == BigInt.from('2768292749187922993934715143535384861582621221551460873'))
+end
+## end
