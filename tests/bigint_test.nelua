@@ -37,9 +37,11 @@ do -- from
 end
 
 do -- copy
-  local x <close> = BigInt.from(0x1337)
-  local y <close> = x:copy()
+  local x = BigInt.from(0x1337)
+  local y <close> = BigInt.from(0x1338)
+  x:copy(y)
   assert(x == y)
+  x:destroy()
 end
 
 do -- tointeger
@@ -192,6 +194,8 @@ do -- division and modulo operations
   local x <close> = BigInt.tmod(-7, 3) assert(x == -1)
   local x <close> = BigInt.tmod(7, -3) assert(x == -1)
   local x <close> = BigInt.tmod(-7, -3) assert(x == 1)
+
+  local x <close> = BigInt.umod(7, 3) assert(x == 1)
 end
 
 ## if not pragmas.nogc then

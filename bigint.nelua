@@ -156,14 +156,13 @@ function BigInt:__close(): void
 end
 
 -- Returns the total storage size in bytes.
-function BigInt:__len(): usize
-  if not self.mpi then return 0 end
-  return mbedtls_mpi_size(self.mpi)
+function BigInt.__len(x: BigInt): usize
+  if not x.mpi then return 0 end
+  return mbedtls_mpi_size(x.mpi)
 end
 
 -- Return the total storage size in bits.
-function BigInt.bitlen(x: BigInt_convertible): usize
-  ## ensure_bigints(x)
+function BigInt.bitlen(x: BigInt): usize
   if not x.mpi then return 0 end
   return mbedtls_mpi_bitlen(x.mpi)
 end
@@ -176,13 +175,24 @@ function BigInt.new(): BigInt
   return self
 end
 
--- Returns a clone of a big integer.
-function BigInt.copy(x: BigInt): BigInt
-  local res: BigInt = BigInt.new()
-  if x.mpi then
-    mbedtls_check(mbedtls_mpi_copy(res.mpi, x.mpi))
+-- Copy the value of other big integer into this one (inplace).
+function BigInt:copy(x: BigInt_convertible)
+  ## ensure_bigints(x)
+  if not self.mpi then
+    self.mpi = new(@mbedtls_mpi)
+  elseif self.mpi == (@mbedtls_mpi)() then -- mpi not initialized?
+    mbedtls_mpi_init(self.mpi)
   end
-  return res
+  mbedtls_check(mbedtls_mpi_copy(self.mpi, x.mpi))
+end
+
+-- Returns a clone of another big integer.
+function BigInt.clone(x: BigInt): BigInt
+  local clone: BigInt = BigInt.new()
+  if x.mpi then
+    mbedtls_check(mbedtls_mpi_copy(clone.mpi, x.mpi))
+  end
+  return clone
 end
 
 --------------------------------------------------------------------------------
@@ -272,7 +282,7 @@ function BigInt.from(v: BigInt_convertible): BigInt
   ## elseif v.type.is_string then
     return BigInt.fromstring(v)
   ## elseif v.type.is_bigint then
-    return v:copy()
+    return BigInt.clone(v)
   ## end
 end
 
@@ -421,6 +431,14 @@ function BigInt.rdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
   return nume /// b
 end
 
+-- Integer unsigned modulo operation (rounding towards 0).
+function BigInt.umod(a: BigInt_convertible, b: BigInt_convertible): BigInt
+  ## ensure_bigints(a, b)
+  local res: BigInt = BigInt.new()
+  mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
+  return res
+end
+
 -- Integer truncate modulo operation (rounding towards 0).
 function BigInt.tmod(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
@@ -485,7 +503,7 @@ function BigInt.__mod(a: BigInt_convertible, b: BigInt_convertible): BigInt
 end
 
 function BigInt.__pow(base: BigInt_convertible, exp: integer): BigInt
-  local b <close> = BigInt.from(base)
+  local b <close> = base:clone()
   local res: BigInt = BigInt.frominteger(1)
   while exp ~= 0 do
     if exp & 1 == 1 then
@@ -508,11 +526,10 @@ end
 -- Performs a logical left shift.
 function BigInt.__shl(a: BigInt_convertible, count: integer): BigInt
   ## ensure_bigints(a)
-  local res: BigInt = a:copy()
+  local res: BigInt = a:clone()
   mbedtls_check(mbedtls_mpi_shift_l(res.mpi, count))
   return res
 end
-
 --[[
 Performs a right shift on the absolute value.
 Caution when using this as it does not follow two-complement arithmetic rules,
@@ -520,7 +537,7 @@ because this does not perform a real logical shift nor an arithmetic shift.
 ]]
 function BigInt.__shr(a: BigInt_convertible, count: integer): BigInt
   ## ensure_bigints(a)
-  local res: BigInt = a:copy()
+  local res: BigInt = a:clone()
   mbedtls_check(mbedtls_mpi_shift_r(res.mpi, count))
   return res
 end
@@ -562,7 +579,7 @@ it will only flip existing bits of the absolute value.
 ]]
 function BigInt.__bnot(a: BigInt_convertible): BigInt
   ## ensure_bigints(a)
-  local res: BigInt = a:copy()
+  local res: BigInt = a:clone()
   for i: usize=0,<res:bitlen() do
     local bit: cint = mbedtls_mpi_get_bit(res.mpi, i) == 0 and 1 or 0
     mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, bit))
