@@ -66,6 +66,23 @@ local short_suffixes = {
   float32 = '_f32',
   float64 = '_f64',
   float128 = '_f128',
+
+  cchar = '_cc',
+  cschar = '_csc',
+  cshort = '_cs',
+  cint = '_ci',
+  clong = '_cl',
+  clonglong = '_cll',
+  cptrdiff = '_cpd',
+  cuchar = '_cuc',
+  cushort = '_cus',
+  cuint = '_cui',
+  culong = '_cul',
+  culonglong = '_cull',
+  csize = '_cz',
+  cfloat = '_cf',
+  cdouble = '_cd',
+  clongdouble = '_cld',
 }
 
 local function inspect_procedure_value(value)
