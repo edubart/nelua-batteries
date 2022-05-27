@@ -8,7 +8,7 @@ require 'math'
 
 -- Error
 ## cinclude '<mbedtls/error.h>'
-global MBEDTLS_ERR_MPI_BUFFER_TOO_SMALL: cint <cimport,nodecl,const>
+local MBEDTLS_ERR_MPI_BUFFER_TOO_SMALL: cint <cimport,nodecl,const>
 local function mbedtls_low_level_strerr(error_code: cint): cstring <cimport,nodecl> end
 
 -- Big Num
@@ -104,11 +104,12 @@ local function mbedtls_entropy_func(data: pointer, output: *cuchar, len: csize):
 -- Helpers
 
 -- Utility to check and raise big integer errors.
-local function mbedtls_check(res: cint): void
-  if unlikely(res ~= 0) then
+local function mbedtls_check(res: cint): cint
+  if unlikely(res < 0) then
     local err: string <close> = string.format("BigInt ERROR: %s", mbedtls_low_level_strerr(res))
     error(err)
   end
+  return res
 end
 
 -- Cleanup big integer resources when the garbage collector is enabled.
@@ -144,10 +145,11 @@ local BigInt: type = @record{
 
 -- Destroys the big integer, freeing its resources.
 function BigInt:destroy(): void
-  if not self.mpi then return end
-  mbedtls_mpi_free(self.mpi)
-  delete(self.mpi)
-  self.mpi = nilptr
+  if self.mpi then
+    mbedtls_mpi_free(self.mpi)
+    delete(self.mpi)
+    self.mpi = nilptr
+  end
 end
 
 -- Allow cleaning up resources with to-be-closed variables.
@@ -159,6 +161,11 @@ end
 function BigInt.__len(x: BigInt): usize
   if not x.mpi then return 0 end
   return mbedtls_mpi_size(x.mpi)
+end
+
+-- Returns true if the big integer is properly allocated and initialized.
+function BigInt.isvalid(x: BigInt): boolean
+  return x.mpi ~= nilptr and x.mpi.s ~= 0
 end
 
 -- Return the total storage size in bits.
@@ -175,17 +182,6 @@ function BigInt.new(): BigInt
   return self
 end
 
--- Copy the value of other big integer into this one (inplace).
-function BigInt:copy(x: BigInt_convertible)
-  ## ensure_bigints(x)
-  if not self.mpi then
-    self.mpi = new(@mbedtls_mpi)
-  elseif self.mpi == (@mbedtls_mpi)() then -- mpi not initialized?
-    mbedtls_mpi_init(self.mpi)
-  end
-  mbedtls_check(mbedtls_mpi_copy(self.mpi, x.mpi))
-end
-
 -- Returns a clone of another big integer.
 function BigInt.clone(x: BigInt): BigInt
   local clone: BigInt = BigInt.new()
@@ -193,6 +189,30 @@ function BigInt.clone(x: BigInt): BigInt
     mbedtls_check(mbedtls_mpi_copy(clone.mpi, x.mpi))
   end
   return clone
+end
+
+-- Copy the value of other big integer into this one (inplace).
+function BigInt:copy(x: BigInt_convertible)
+  ## ensure_bigints(x)
+  if not self.mpi then
+    self.mpi = new(@mbedtls_mpi)
+  elseif self.mpi.s == 0 then -- mpi not initialized?
+    mbedtls_mpi_init(self.mpi)
+  end
+  mbedtls_check(mbedtls_mpi_copy(self.mpi, x.mpi))
+end
+
+function BigInt.getbit(x: BigInt_convertible, pos: usize): uint8
+  ## ensure_bigints(x)
+  return mbedtls_check(mbedtls_mpi_get_bit(x.mpi, pos))
+end
+
+-- Returns the sign of the big integer, -1 if negative, 0 if zero, 1 if positive.
+function BigInt.sign(x: BigInt_convertible): int32
+  ## ensure_bigints(x)
+  if x.mpi.s == -1 then return -1 end -- negative
+  if x:bitlen() > 0 then return 1 end -- positive
+  return 0
 end
 
 --------------------------------------------------------------------------------
@@ -234,9 +254,9 @@ Creates a big integer from a decimal string.
 The returned big integer is multiplied by `10^decimal_places` so decimals are not lost.
 Any decimals after `decimal_places` decimals are discarded.
 ]]
-function BigInt.fromdecimal(s: string, decimal_places: integer): BigInt
+function BigInt.fromdecimal(s: string, decimal_places: usize): BigInt
   local found_decimal: boolean
-  local n_decimals: integer
+  local n_decimals: usize
   local sb: stringbuilder <close>
   -- filter string by removing '.'
   for i: usize=0,<s.size do
@@ -308,14 +328,17 @@ function BigInt.tobytes(x: BigInt_convertible, little_endian: facultative(boolea
 end
 
 -- Returns the big integer as a string in the desired base.
-function BigInt.tostring(x: BigInt_convertible, base: facultative(int32)): string
+function BigInt.tostring(x: BigInt_convertible, base: facultative(int32), minlen: facultative(int32)): string
   ## ensure_bigints(x)
   ## if base.type.is_niltype then
   local base: int32 = 10
   ## end
   local sb: stringbuilder <close>
   local len: csize
-  mbedtls_mpi_write_string(x.mpi, base, nilptr, 0, &len)
+  local errcode: cint = mbedtls_mpi_write_string(x.mpi, base, nilptr, 0, &len)
+  if errcode < 0 and errcode ~= MBEDTLS_ERR_MPI_BUFFER_TOO_SMALL then
+    mbedtls_check(errcode)
+  end
   if len > 0 then
     local buf: span(byte) = sb:prepare(len)
     mbedtls_check(mbedtls_mpi_write_string(x.mpi, base, buf.data, buf.size, &len))
@@ -330,7 +353,16 @@ function BigInt.tostring(x: BigInt_convertible, base: facultative(int32)): strin
       j = i + 1
     end
   end
-  return s:subview(j+1, -1):lower()
+  s = s:subview(j+1, -1):lower()
+  ## if not minlen.type.is_niltype then
+  if #s < minlen then
+    local zeros: string <close> = string.rep('0', minlen-#s)
+    local s2: string = zeros..s
+    s:destroy()
+    return s2
+  end
+  ## end
+  return s
 end
 
 -- Returns the big integer as an integer.
@@ -404,7 +436,7 @@ function BigInt.fdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
   local qb: BigInt <close> = q * b
   if qb == a then return q end
   defer q:destroy() end
-  return q - ((a < 0 and 1 or 0) ~ (b < 0 and 1 or 0))
+  return q - ((a.mpi.s < 0 and 1 or 0) ~ (b.mpi.s < 0 and 1 or 0))
 end
 
 -- Integer ceil division (rounding towards infinity).
@@ -414,7 +446,7 @@ function BigInt.cdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
   local qb: BigInt <close> = q * b
   if qb == a then return q end
   defer q:destroy() end
-  return q + (1 - ((a < 0 and 0 or 1) ~ (b < 0 and 0 or 1)))
+  return q + (1 - ((a.mpi.s < 0 and 0 or 1) ~ (b.mpi.s < 0 and 0 or 1)))
 end
 
 -- Integer round division (rounding towards nearest integer).
@@ -423,7 +455,7 @@ function BigInt.rdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
   local b_div2: BigInt <close> = b /// 2
   local nume: BigInt
   defer nume:destroy() end
-  if ((a < 0 and 1 or 0) ~ (b < 0 and 1 or 0)) == 1 then
+  if ((a.mpi.s < 0 and 1 or 0) ~ (b.mpi.s < 0 and 1 or 0)) == 1 then
     nume = a - b_div2
   else
     nume = a + b_div2
@@ -431,19 +463,11 @@ function BigInt.rdiv(a: BigInt_convertible, b: BigInt_convertible): BigInt
   return nume /// b
 end
 
--- Integer unsigned modulo operation (rounding towards 0).
-function BigInt.umod(a: BigInt_convertible, b: BigInt_convertible): BigInt
-  ## ensure_bigints(a, b)
-  local res: BigInt = BigInt.new()
-  mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
-  return res
-end
-
 -- Integer truncate modulo operation (rounding towards 0).
 function BigInt.tmod(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
   local res: BigInt = BigInt.new()
-  local a_negative: boolean, b_negative: boolean = a < 0, b < 0
+  local a_negative: boolean, b_negative: boolean = a.mpi.s < 0, b.mpi.s < 0
   if not a_negative and not b_negative then
     mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
   else -- at least one is negative
@@ -461,7 +485,7 @@ end
 function BigInt.fmod(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
   local res: BigInt = BigInt.new()
-  local a_negative: boolean, b_negative: boolean = a < 0, b < 0
+  local a_negative: boolean, b_negative: boolean = a.mpi.s < 0, b.mpi.s < 0
   if not a_negative and not b_negative then
     mbedtls_check(mbedtls_mpi_mod_mpi(res.mpi, a.mpi, b.mpi))
   else -- at least one is negative
@@ -524,30 +548,45 @@ end
 -- Bitwise metamethods
 
 -- Performs a logical left shift.
-function BigInt.__shl(a: BigInt_convertible, count: integer): BigInt
+function BigInt.__shl(a: BigInt_convertible, count: usize): BigInt
   ## ensure_bigints(a)
   local res: BigInt = a:clone()
   mbedtls_check(mbedtls_mpi_shift_l(res.mpi, count))
   return res
 end
+
+-- Performs a logical left shift (in-place).
+function BigInt.shl_(self: BigInt, count: usize): BigInt
+  if not self.mpi then return self end -- should be zero
+  mbedtls_check(mbedtls_mpi_shift_l(self.mpi, count))
+  return self
+end
+
 --[[
 Performs a right shift on the absolute value.
 Caution when using this as it does not follow two-complement arithmetic rules,
 because this does not perform a real logical shift nor an arithmetic shift.
 ]]
-function BigInt.__shr(a: BigInt_convertible, count: integer): BigInt
+function BigInt.__shr(a: BigInt_convertible, count: usize): BigInt
   ## ensure_bigints(a)
   local res: BigInt = a:clone()
   mbedtls_check(mbedtls_mpi_shift_r(res.mpi, count))
   return res
 end
 
+-- Performs a right shift (in-place).
+function BigInt.shr_(self: BigInt, count: usize): BigInt
+  if not self.mpi then return self end -- should be zero
+  mbedtls_check(mbedtls_mpi_shift_r(self.mpi, count))
+  return self
+end
+
 function BigInt.__bor(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
   local res: BigInt = BigInt.new()
   for i: usize=0,<math.max(a:bitlen(), b:bitlen()) do
-    local bit: cint = mbedtls_mpi_get_bit(a.mpi, i) | mbedtls_mpi_get_bit(b.mpi, i)
-    mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, bit))
+    local a_bit: uint8, b_bit: uint8 = a:getbit(i), b:getbit(i)
+    mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, a_bit | b_bit))
   end
   return res
 end
@@ -556,8 +595,8 @@ function BigInt.__band(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
   local res: BigInt = BigInt.new()
   for i: usize=0,<math.max(a:bitlen(), b:bitlen()) do
-    local bit: cint = mbedtls_mpi_get_bit(a.mpi, i) & mbedtls_mpi_get_bit(b.mpi, i)
-    mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, bit))
+    local a_bit: uint8, b_bit: uint8 = a:getbit(i), b:getbit(i)
+    mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, a_bit & b_bit))
   end
   return res
 end
@@ -566,8 +605,8 @@ function BigInt.__bxor(a: BigInt_convertible, b: BigInt_convertible): BigInt
   ## ensure_bigints(a, b)
   local res: BigInt = BigInt.new()
   for i: usize=0,<math.max(a:bitlen(), b:bitlen()) do
-    local bit: cint = mbedtls_mpi_get_bit(a.mpi, i) ~ mbedtls_mpi_get_bit(b.mpi, i)
-    mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, bit))
+    local a_bit: uint8, b_bit: uint8 = a:getbit(i), b:getbit(i)
+    mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, a_bit ~ b_bit))
   end
   return res
 end
@@ -581,7 +620,7 @@ function BigInt.__bnot(a: BigInt_convertible): BigInt
   ## ensure_bigints(a)
   local res: BigInt = a:clone()
   for i: usize=0,<res:bitlen() do
-    local bit: cint = mbedtls_mpi_get_bit(res.mpi, i) == 0 and 1 or 0
+    local bit: cint = res:getbit(i) == 0 and 1 or 0
     mbedtls_check(mbedtls_mpi_set_bit(res.mpi, i, bit))
   end
   return res
@@ -593,8 +632,7 @@ end
 function BigInt.abs(a: BigInt_convertible): BigInt
   ## ensure_bigints(a)
   local res: BigInt = BigInt.new()
-  local b: BigInt <close> = BigInt.new()
-  mbedtls_check(mbedtls_mpi_add_abs(res.mpi, a.mpi, b.mpi))
+  mbedtls_check(mbedtls_mpi_add_abs(res.mpi, res.mpi, a.mpi))
   return res
 end
 
@@ -643,17 +681,17 @@ end
 --------------------------------------------------------------------------------
 -- RNG methods
 
--- initialize RNG
 local rng: mbedtls_ctr_drbg_context
-local entropy: mbedtls_entropy_context
-local rng_initialized: boolean = false
+local rng_initialized: boolean
 
 local function ensure_rng_initialized()
   if rng_initialized then return end
+  rng_initialized = true
+  local entropy: mbedtls_entropy_context
   mbedtls_entropy_init(&entropy)
   mbedtls_ctr_drbg_init(&rng)
   mbedtls_check(mbedtls_ctr_drbg_seed(&rng, mbedtls_entropy_func, &entropy, nilptr, 0))
-  rng_initialized = true
+  mbedtls_entropy_free(&entropy)
 end
 
 -- Returns a random big int in the range [min,max).

@@ -5,6 +5,7 @@ do -- empty
   assert(#x == 0)
   assert(x:bitlen() == 0)
   assert(x == 0)
+  assert(not x:isvalid())
 
   local one: BigInt <close> = x + 1 assert(one == 1)
 end
@@ -12,6 +13,7 @@ end
 do -- new
   local x = BigInt.new()
   assert(x == 0)
+  assert(x:isvalid())
   x:destroy()
 end
 
@@ -36,12 +38,29 @@ do -- from
   local x <close> = BigInt.from('2147483647') assert(x == 2147483647)
 end
 
+do -- clone
+  local x <close> = BigInt.from(0x1337)
+  local y <close> = x:clone()
+  assert(x == y)
+end
+
 do -- copy
   local x = BigInt.from(0x1337)
   local y <close> = BigInt.from(0x1338)
   x:copy(y)
   assert(x == y)
   x:destroy()
+end
+
+do -- getbit
+  local one <close> = BigInt.from(0b10101)
+  assert(one:getbit(0) == 1)
+  assert(one:getbit(1) == 0)
+  assert(one:getbit(2) == 1)
+  assert(one:getbit(3) == 0)
+  assert(one:getbit(4) == 1)
+  assert(one:getbit(5) == 0)
+  assert(one:getbit(6) == 0)
 end
 
 do -- tointeger
@@ -58,6 +77,12 @@ do -- tostring
   local b10 <close> = BigInt.tostring(0x7fffffff) assert(b10 == '2147483647')
   local b16 <close> = BigInt.tostring(0x7fffffff, 16) assert(b16 == '7fffffff')
   local b2 <close> = BigInt.tostring(9, 2) assert(b2 == '1001')
+
+  local b16 <close> = BigInt.tostring(0xab, 16, 0) assert(b16 == 'ab')
+  local b16 <close> = BigInt.tostring(0xab, 16, 1) assert(b16 == 'ab')
+  local b16 <close> = BigInt.tostring(0xab, 16, 2) assert(b16 == 'ab')
+  local b16 <close> = BigInt.tostring(0xab, 16, 3) assert(b16 == '0ab')
+  local b16 <close> = BigInt.tostring(0xab, 16, 4) assert(b16 == '00ab')
 end
 
 do -- comparison
@@ -87,7 +112,6 @@ do -- arithmetic operations
   local x <close> = i2 ^ 3 assert(x == 8)
   local x <close> = i2 ^ 5 assert(x == 32)
 end
-
 
 do -- bitwise shifts
   local i15 <close> = BigInt.from(15)
@@ -194,8 +218,6 @@ do -- division and modulo operations
   local x <close> = BigInt.tmod(-7, 3) assert(x == -1)
   local x <close> = BigInt.tmod(7, -3) assert(x == -1)
   local x <close> = BigInt.tmod(-7, -3) assert(x == 1)
-
-  local x <close> = BigInt.umod(7, 3) assert(x == 1)
 end
 
 ## if not pragmas.nogc then
