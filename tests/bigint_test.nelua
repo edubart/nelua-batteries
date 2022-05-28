@@ -4,21 +4,23 @@ do -- empty
   local x: BigInt
   assert(#x == 0)
   assert(x:bitlen() == 0)
-  assert(x == 0)
+  assert(x:sign() == 0)
   assert(not x:isvalid())
-
-  local one: BigInt <close> = x + 1 assert(one == 1)
 end
 
 do -- new
   local x = BigInt.new()
   assert(x == 0)
+  assert(#x == 0)
+  assert(x:bitlen() == 0)
+  assert(x:sign() == 0)
   assert(x:isvalid())
   x:destroy()
 end
 
 do -- frominteger
-  local x <close> = BigInt.frominteger(2) assert(x == 2)
+  local x <close> = BigInt.frominteger(2) assert(x == 2 and #x == 1)
+  local x <close> = BigInt.frominteger(0xfff) assert(x == 0xfff and #x == 2)
 end
 
 do -- fromstring
@@ -47,7 +49,7 @@ end
 do -- copy
   local x = BigInt.from(0x1337)
   local y <close> = BigInt.from(0x1338)
-  x:copy(y)
+  x:copy_(y)
   assert(x == y)
   x:destroy()
 end
@@ -63,6 +65,11 @@ do -- getbit
   assert(one:getbit(6) == 0)
 end
 
+do -- sign
+  local x <close> = BigInt.from(2) assert(x:sign() == 1)
+  local x <close> = BigInt.from(-2) assert(x:sign() == -1)
+  local x <close> = BigInt.from(0) assert(x:sign() == 0)
+end
 do -- tointeger
   assert(BigInt.tointeger('0x7fffffff') == 0x7fffffff)
 end
@@ -70,6 +77,8 @@ end
 do -- tobytes
   local s <close> = BigInt.tobytes('0x1337') assert(s == '\x13\x37')
   local s <close> = BigInt.tobytes('0x1337', true) assert(s == '\x37\x13')
+  local s <close> = BigInt.tobytes('0x0137', false, 4) assert(s == '\x00\x00\x01\x37')
+  local s <close> = BigInt.tobytes('0x0137', true, 4) assert(s == '\x37\x01\x00\x00')
 end
 
 do -- tostring
@@ -98,6 +107,7 @@ end
 
 do -- arithmetic operations
   local i2 <close> = BigInt.from(2)
+  local n2 <close> = BigInt.from(-2)
   local i3 <close> = BigInt.from(3)
   local i5 <close> = BigInt.from(5)
   local i18 <close> = BigInt.from(18)
@@ -111,6 +121,8 @@ do -- arithmetic operations
   local x <close> = i2 ^ 2 assert(x == 4)
   local x <close> = i2 ^ 3 assert(x == 8)
   local x <close> = i2 ^ 5 assert(x == 32)
+  local x <close> = n2 ^ 2 assert(x == 4)
+  local x <close> = n2 ^ 3 assert(x == -8)
 end
 
 do -- bitwise shifts
@@ -127,22 +139,25 @@ do -- bitwise shifts
   local x <close> = m15 << 0 assert(x == -15)
   local x <close> = m15 << 1 assert(x == -30)
   local x <close> = m15 << 2 assert(x == -60)
+
+  local n2 <close> = BigInt.from(-2)
+  local x <close> = n2 >>> 1 assert(x == -1)
 end
 
-do -- bitwise opeations
-  local x <close> =  BigInt.__bor(0b01010, 0b10010) assert(x == 0b11010)
-  local x <close> = BigInt.__band(0b01010, 0b10010) assert(x == 0b00010)
-  local x <close> = BigInt.__bxor(0b01010, 0b10011) assert(x == 0b11001)
-  local x <close> = BigInt.__bnot(0b11010) assert(x == 0b00101)
+do -- bitwise operations
+  local x <close> =  BigInt.bor(0b01010, 0b10010) assert(x == 0b11010)
+  local x <close> = BigInt.band(0b01010, 0b10010) assert(x == 0b00010)
+  local x <close> = BigInt.bxor(0b01010, 0b10011) assert(x == 0b11001)
+  local x <close> = BigInt.bnot(26) assert(x == -27)
 end
 
-do -- divmod
-  local q <close>, r <close> = BigInt.divmod(17, 5)
+do -- tdivrem
+  local q <close>, r <close> = BigInt.tdivrem(17, 5)
   assert(q == 3) assert(r == 2)
 end
 
-do -- expmod
-  local x <close> = BigInt.expmod(11, 7, 3) assert(x == 2)
+do -- powmod
+  local x <close> = BigInt.powmod(11, 7, 3) assert(x == 2)
 end
 
 do -- invmod
@@ -163,13 +178,16 @@ do -- abs
 end
 
 do -- randombytes
+  math.randomseed(0)
   local x: BigInt <close> = BigInt.randombytes(32)
   assert(#x == 32)
 end
 
 do -- randomrange
-  local x: BigInt <close> = BigInt.randomrange(0, 2)
-  assert(x >= 0 and x <= 1)
+  for i=1,10 do
+    local x: BigInt <close> = BigInt.random(2)
+    assert(x >= 0 and x <= 1)
+  end
 end
 
 do -- division and modulo operations
@@ -209,15 +227,20 @@ do -- division and modulo operations
   local x <close> = BigInt.rdiv(7, -4) assert(x == -2)
   local x <close> = BigInt.rdiv(-7, -4) assert(x == 2)
 
+  local x <close> = BigInt.mod(7, 3) assert(x == 1)
+  local x <close> = BigInt.mod(-7, 3) assert(x == 2)
+  local x <close> = BigInt.mod(7, -3) assert(x == 1)
+  local x <close> = BigInt.mod(-7, -3) assert(x == 2)
+
+  local x <close> = BigInt.tmod(7, 3) assert(x == 1)
+  local x <close> = BigInt.tmod(-7, 3) assert(x == -1)
+  local x <close> = BigInt.tmod(7, -3) assert(x == 1)
+  local x <close> = BigInt.tmod(-7, -3) assert(x == -1)
+
   local x <close> = BigInt.fmod(7, 3) assert(x == 1)
   local x <close> = BigInt.fmod(-7, 3) assert(x == 2)
   local x <close> = BigInt.fmod(7, -3) assert(x == -2)
   local x <close> = BigInt.fmod(-7, -3) assert(x == -1)
-
-  local x <close> = BigInt.tmod(7, 3) assert(x == 1)
-  local x <close> = BigInt.tmod(-7, 3) assert(x == -1)
-  local x <close> = BigInt.tmod(7, -3) assert(x == -1)
-  local x <close> = BigInt.tmod(-7, -3) assert(x == 1)
 end
 
 ## if not pragmas.nogc then
