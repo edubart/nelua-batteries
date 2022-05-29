@@ -22,6 +22,7 @@ but also a wrapper to make it easier to use it with Nelua.
 * `json` - Parse JSON into Nelua records, made in pure Nelua.
 * `nester` - Minimal unit testing framework inspired by [lester](https://github.com/edubart/lester).
 * `inspector` - Function module which receives any value and returns the contents as a string, inspired by [inspect.lua](https://github.com/kikito/inspect.lua/)
+* `bigint` - Arbitrary-precision arithmetic integer module based on GMP.
 
 # Examples
 

@@ -1,3 +1,12 @@
+--[[
+Arbitrary-precision arithmetic integer module based on GMP.
+
+This module works in standalone by default and bundles the Mini GMP library.
+However you can set BIGINT_USE_GMP to true before requiring this to use
+your system's GMP library, which is a more sophisticated implementation and is
+much faster.
+]]
+
 require 'string'
 require 'math'
 

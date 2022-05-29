@@ -1,0 +1,58 @@
+--[[
+Minimal RSA cryptosystem using example BigInt.
+See https://en.wikipedia.org/wiki/RSA_(cryptosystem) for details.
+]]
+
+local BigInt = require 'bigint'
+
+-- 1. Choose two distinct primes
+local p = BigInt.from('5011956100955230700919988831')
+local q = BigInt.from('5989833698158308593254005067')
+print('p = ' .. tostring(p))
+print('q = ' .. tostring(q))
+
+-- 2. Compute n = p * q
+local n = p * q
+print('n = ' .. tostring(n))
+assert(n == BigInt.from('30020783547191766561527759475184666413598963507657406677'))
+
+-- 3. Compute the totient
+local phi_n = BigInt.lcm(p - 1, q - 1)
+print('phi_n = ' .. tostring(phi_n))
+assert(phi_n == BigInt.from('5003463924531961093587959910697146102414237368913902130'))
+
+-- 4. Choose any number e that 1 < e < phi_n and is coprime to phi_n
+local e = BigInt.from('65537')
+print('e = ' .. tostring(e))
+
+-- 5. Compute d, the modular multiplicative inverse
+local d = BigInt.invmod(e, phi_n)
+print('d = ' .. tostring(d))
+assert(d == BigInt.from('2768292749187922993934715143535384861582621221551460873'))
+
+-- The public key is (n, e), implement the encrypt function
+local function encrypt(msg: BigInt): BigInt
+  return BigInt.powmod(msg, e, n)
+end
+
+-- The private key is (n, d), implement the decrypt function
+local function decrypt(msg: BigInt): BigInt
+  return BigInt.powmod(msg, d, n)
+end
+
+-- Test encrypt and decrypt
+print('-- Message encryption test --')
+local msg = 'Hello world!'
+print('Message: '..msg)
+local x = BigInt.frombytes(msg)
+assert(x < n)
+print('x = 0x' .. x:tostring(16) .. ' (original message)')
+local c = encrypt(x)
+print('c = 0x' .. c:tostring(16) .. ' (encrypted message)')
+assert(c == BigInt.from('0x81fa941a0bf7a387f0ad060b90a5cd251be4031b4df39a'))
+local m = decrypt(c)
+print('m = 0x' .. m:tostring(16) .. ' (decrypted message)')
+assert(m == x)
+local decoded = BigInt.tobytes(m)
+print('Decrypted: '..decoded)
+assert(decoded == msg)
