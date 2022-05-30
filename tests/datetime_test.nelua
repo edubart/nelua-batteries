@@ -1,0 +1,25 @@
+local datetime = require 'datetime'
+
+do print 'conversion'
+  assert(datetime.iso8601_to_unixtime'2021-10-31T23:26:18.580Z' == 1635722778.580)
+  assert(datetime.unixtime_to_iso8601(1635722778.580) == '2021-10-31T23:26:18.580Z')
+
+  assert(datetime.iso8601_to_unixtime'1970-01-01T00:00:00.000Z' == 0.0)
+  assert(datetime.unixtime_to_iso8601(0.0) == '1970-01-01T00:00:00.000Z')
+
+  assert(datetime.iso8601_to_unixtime'2000-02-29T23:59:59.999Z' == 951868799.999)
+  assert(datetime.unixtime_to_iso8601(951868799.999) == '2000-02-29T23:59:59.999Z')
+
+  assert(datetime.iso8601_to_unixtime'2000-02-29T23:59:59.9999Z' == 951868799.9999)
+  assert(datetime.unixtime_to_iso8601(951868799.9999) == '2000-03-01T00:00:00.000Z')
+end
+
+do print 'roundtrip'
+  assert(datetime.iso8601_to_unixtime(datetime.unixtime_to_iso8601(1635722778.580)) == 1635722778.580)
+  assert(datetime.unixtime_to_iso8601(
+    datetime.iso8601_to_unixtime('2021-10-31T23:26:18.580Z')) ==
+    '2021-10-31T23:26:18.580Z')
+  assert(datetime.unixtime_to_iso8601(
+    datetime.iso8601_to_unixtime('2021-11-02T11:43:45.850Z')) ==
+    '2021-11-02T11:43:45.850Z')
+end

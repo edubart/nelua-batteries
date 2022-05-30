@@ -3,28 +3,27 @@ NFLAGS=-L..
 NELUARUN=$(NELUA) $(NFLAGS)
 
 test: \
-	test-fs \
-	test-json \
-	test-ffi \
-	test-backtrace \
-	test-nester \
-	test-inspector
+	algorithm_test \
+	bigint_test \
+	datetime_test \
+	ffi_test \
+	fs_test \
+	inspector_test \
+	json_test \
+	signal_test
 
-test-fs:
-	$(NELUARUN) fs_test.nelua
+test-all: test test-test test-wrappers
 
-test-json:
-	$(NELUARUN) json_test.nelua
+test-tester: \
+	nester_test \
 
-test-backtrace:
-	$(NELUARUN) backtrace_test.nelua
+test-wrappers: \
+	backtrace_test \
+	sqlite3_test
 
-test-ffi:
+ffi_test:
 	$(NELUARUN) --shared-lib ffi_module.nelua -o ffi_module
 	$(NELUARUN) ffi_test.nelua
 
-test-nester:
-	$(NELUARUN) nester_test.nelua
-
-test-inspector:
-	$(NELUARUN) inspector_test.nelua
+%_test:
+	$(NELUARUN) $@.nelua

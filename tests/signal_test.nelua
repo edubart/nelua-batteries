@@ -1,0 +1,11 @@
+local signal = require 'signal'
+
+local got_signal: boolean
+
+do print 'setsignal/raise'
+  assert(signal.setsignal(signal.SIGTERM, function(signum: cint)
+    got_signal = true
+  end))
+  assert(signal.raise(signal.SIGTERM))
+  assert(got_signal == true)
+end

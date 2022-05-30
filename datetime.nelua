@@ -1,0 +1,120 @@
+--[[
+Module with utilities to convert unix timestamps from/to ISO 8601 date time.
+The algorithms in this file is described in https://howardhinnant.github.io/date_algorithms.html
+]]
+
+require 'string'
+require 'math'
+
+local datetime = @record{}
+
+-- Returns true if `y` is a leap year in the civil calendar, else false.
+local function is_leap(y: int64): boolean
+  return y % 4 == 0 and (y % 100 ~= 0 or y % 400 == 0)
+end
+
+--[[
+Preconditions: m is in [1, 12]
+Returns the number of days in the month m of common year.
+The result is always in the range [28, 31].
+]]
+local function last_day_of_month_common_year(m: uint64): uint64
+  local a: []uint8 = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+  return a[m-1]
+end
+
+--[[
+Preconditions: m is in [1, 12]
+Returns the number of days in the month m of leap year.
+The result is always in the range [29, 31].
+]]
+local function last_day_of_month_leap_year(m: uint64): uint64
+  local a: []uint8 = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+  return a[m-1]
+end
+
+--[[
+Preconditions: m is in [1, 12]
+Returns the number of days in the month m of year y
+The result is always in the range [28, 31].
+]]
+local function last_day_of_month(y: int64, m: uint64): uint64
+  return (m ~= 2 or not is_leap(y)) and last_day_of_month_common_year(m) or 29
+end
+
+--[[
+Returns number of days since civil 1970-01-01.
+Negative values indicate days prior to 1970-01-01.
+Preconditions:
+  y-m-d represents a date in the civil (Gregorian) calendar
+  m is in [1, 12]
+  d is in [1, last_day_of_month(y, m)]
+]]
+local function days_from_civil(y: int64, m: uint64, d: uint64): int64
+  if m <= 2 then y = y -1 end
+  local era: int64 = y // 400
+  local yoe: uint64 = (@uint64)(y - era * 400) -- [0, 399]
+  local doy: uint64 = (153*(m > 2 and m-3 or m+9) + 2)//5 + d-1 -- [0, 365]
+  local doe: uint64 = yoe * 365 + yoe//4 - yoe//100 + doy -- [0, 146096]
+  return era * 146097 + (@int64)(doe) - 719468
+end
+
+-- Returns year/month/day triple in civil calendar.
+local function civil_from_days(z: int64): (int64, int64, int64)
+  z = z + 719468
+  local era: int64 = z // 146097
+  local doe: uint64 = (@uint64)(z - era * 146097) -- [0, 146096]
+  local yoe: uint64 = (doe - doe//1460 + doe//36524 - doe//146096) // 365 -- [0, 399]
+  local y: int64 = (@int64)(yoe) + era * 400
+  local doy: uint64 = doe - (365*yoe + yoe//4 - yoe//100) -- [0, 365]
+  local mp: uint64 = (5*doy + 2)//153 -- [0, 11]
+  local d: uint64 = doy - (153*mp+2)//5 + 1 -- [1, 31]
+  local m: uint64 = mp < 10 and mp+3 or mp-9 -- [1, 12]
+  return y + (m <= 2 and 1 or 0), m, d
+end
+
+--[[
+Converts an ISO 8601 date time from string `s` to an Unix timestamp in seconds with milliseconds precision.
+The input string must be in the format 'YYYY-MM-DDThh:mm:ss.SSSZ'.
+The ISO 8601 specification is vast and other formats are intentionally not supported.
+An error is raised in case of invalid inputs.
+]]
+function datetime.iso8601_to_unixtime(s: string): float64
+  local ok: boolean, matches: sequence(string) <close> = s:matchview"([+-]?%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)Z"
+  assert(ok, "malformed ISO-8601 input: format does not match 'YYYY-MM-DDThh:mm:ss.SSSZ'")
+  local yea: int64, mon: int64, day: int64, hour: int64, min: int64, sec: int64, ms: int64 =
+    tointeger(matches[1]), tointeger(matches[2]), tointeger(matches[3]), tointeger(matches[4]), tointeger(matches[5]), tointeger(matches[6]), tointeger(matches[7])
+  assert(mon >= 1 and mon <= 12, 'malformed ISO-8601 input: invalid month')
+  assert(day >= 1 and day <= last_day_of_month(yea, mon), 'malformed ISO-8601 input: invalid hour')
+  assert(min >= 0 and min <= 59, 'malformed ISO-8601 input: invalid minute')
+  assert(sec >= 0 and sec <= 60, 'malformed ISO-8601 input: invalid second')
+  local t: int64 = days_from_civil(yea, mon, day)*86400 +
+                   hour*3600 +
+                   min*60 +
+                   sec
+  if ms > 0 then
+    local msd: int64 = 1
+    for i: int64=0,<#matches[7] do msd = msd * 10 end
+    return t + (ms / msd)
+  end
+  return t
+end
+
+--[[
+The inverse of `datetime.iso8601_to_unixtime`,
+returning a string in the format 'YYYY-MM-DDThh:mm:ss.SSSZ'.
+]]
+function datetime.unixtime_to_iso8601(t: float64): string
+  local unixtime_ms: int64 = (@int64)(math.floor(t * 1000.0 + 0.5))
+  local unixtime: int64 = unixtime_ms // 1000
+  local yea: int64, mon: int64, day: int64 = civil_from_days(unixtime // 86400)
+  local daysec: int64 = unixtime % 86400
+  local hou: int64 = daysec // 3600
+  local housec: int64 = daysec % 3600
+  local min: int64 = housec // 60
+  local sec: int64 = housec % 60
+  local ms: int64 = unixtime_ms % 1000
+  return string.format("%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", yea, mon, day, hou, min, sec, ms)
+end
+
+return datetime

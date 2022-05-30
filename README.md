@@ -23,6 +23,12 @@ but also a wrapper to make it easier to use it with Nelua.
 * `nester` - Minimal unit testing framework inspired by [lester](https://github.com/edubart/lester).
 * `inspector` - Function module which receives any value and returns the contents as a string, inspired by [inspect.lua](https://github.com/kikito/inspect.lua/)
 * `bigint` - Arbitrary-precision arithmetic integer module based on GMP.
+* `datetime` - Date time utilities to convert ISO 8601 human readable time format to Unix timestamps.
+* `signal` - Utilities to catch and raise OS application signals.
+* `sqlite3` - A wrapper for [SQLite](https://www.sqlite.org/index.html), to execute SQL queries on its databases.
+* `heapqueue` - Implementation of priority queue using binary trees.
+* `algorithm` - Provides algorithms to work on containers, like `sort` and `removeif`.
+* `tuple` - Generic that implements tuples.
 
 # Examples
 

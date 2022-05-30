@@ -1,4 +1,8 @@
-global signal: type = @record{}
+--[[
+Module with utilities to catch and raise OS application signals.
+]]
+
+local signal: type = @record{}
 
 local signal.SIGABRT: cint <const,cimport,cinclude'<signal.h>'>
 local signal.SIGFPE: cint <const,cimport,cinclude'<signal.h>'>
