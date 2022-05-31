@@ -5,6 +5,7 @@ The algorithms in this file is described in https://howardhinnant.github.io/date
 
 require 'string'
 require 'math'
+require 'os'
 
 local datetime = @record{}
 
@@ -74,47 +75,49 @@ local function civil_from_days(z: int64): (int64, int64, int64)
 end
 
 --[[
-Converts an ISO 8601 date time from string `s` to an Unix timestamp in seconds with milliseconds precision.
+Converts an ISO 8601 date time from string `s` to an Unix timestamp in milliseconds.
 The input string must be in the format 'YYYY-MM-DDThh:mm:ss.SSSZ'.
 The ISO 8601 specification is vast and other formats are intentionally not supported.
 An error is raised in case of invalid inputs.
 ]]
-function datetime.iso8601_to_unixtime(s: string): float64
+function datetime.iso8601_to_unixmillis(s: string): int64
   local ok: boolean, matches: sequence(string) <close> = s:matchview"([+-]?%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)Z"
   assert(ok, "malformed ISO-8601 input: format does not match 'YYYY-MM-DDThh:mm:ss.SSSZ'")
-  local yea: int64, mon: int64, day: int64, hour: int64, min: int64, sec: int64, ms: int64 =
+  local yea: int64, mon: int64, day: int64, hour: int64, min: int64, sec: int64, milli: int64 =
     tointeger(matches[1]), tointeger(matches[2]), tointeger(matches[3]), tointeger(matches[4]), tointeger(matches[5]), tointeger(matches[6]), tointeger(matches[7])
   assert(mon >= 1 and mon <= 12, 'malformed ISO-8601 input: invalid month')
   assert(day >= 1 and day <= last_day_of_month(yea, mon), 'malformed ISO-8601 input: invalid hour')
   assert(min >= 0 and min <= 59, 'malformed ISO-8601 input: invalid minute')
   assert(sec >= 0 and sec <= 60, 'malformed ISO-8601 input: invalid second')
-  local t: int64 = days_from_civil(yea, mon, day)*86400 +
-                   hour*3600 +
-                   min*60 +
-                   sec
-  if ms > 0 then
-    local msd: int64 = 1
-    for i: int64=0,<#matches[7] do msd = msd * 10 end
-    return t + (ms / msd)
-  end
-  return t
+  assert(#matches[7] == 3 and milli >= 0 and milli <= 1000, 'malformed ISO-8601 input: invalid millisecond')
+  return days_from_civil(yea, mon, day)*86400000 +
+         hour*3600000 +
+         min*60000 +
+         sec*1000 +
+         milli
 end
 
 --[[
-The inverse of `datetime.iso8601_to_unixtime`,
+The inverse of `datetime.iso8601_to_unixmillis`,
 returning a string in the format 'YYYY-MM-DDThh:mm:ss.SSSZ'.
 ]]
-function datetime.unixtime_to_iso8601(t: float64): string
-  local unixtime_ms: int64 = (@int64)(math.floor(t * 1000.0 + 0.5))
-  local unixtime: int64 = unixtime_ms // 1000
-  local yea: int64, mon: int64, day: int64 = civil_from_days(unixtime // 86400)
-  local daysec: int64 = unixtime % 86400
+function datetime.unixmillis_to_iso8601(millis: int64): string
+  local secs: int64 = millis // 1000
+  local yea: int64, mon: int64, day: int64 = civil_from_days(secs // 86400)
+  local daysec: int64 = secs % 86400
   local hou: int64 = daysec // 3600
   local housec: int64 = daysec % 3600
   local min: int64 = housec // 60
   local sec: int64 = housec % 60
-  local ms: int64 = unixtime_ms % 1000
-  return string.format("%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", yea, mon, day, hou, min, sec, ms)
+  local milli: int64 = millis % 1000
+  return string.format("%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", yea, mon, day, hou, min, sec, milli)
+end
+
+-- Returns the current Unix time in milliseconds.
+function datetime.unixmillis(): int64
+  local secs: integer, nsecs: integer = os.realtime()
+  assert(secs >= 0, 'failed to get current time')
+  return secs * 1000 + nsecs // 1000000
 end
 
 return datetime
