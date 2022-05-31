@@ -170,8 +170,9 @@ local function ensure_bigints(...)
     if not sym.type.is_bigint then
     ]]
       local #|sym.name|#: BigInt <close> = BigInt.from(#[sym]#)
+      assert(#|sym.name|#:isvalid(), "BIGINT - Big integer conversion failed, it's malformed")
     ## else
-      assert(#[sym]#:isvalid(), 'BIGINT - Invalid BigInt (not initialized)')
+      assert(#[sym]#:isvalid(), "BIGINT - Invalid big integer, it's not initialized")
     ##[[
     end
   end
@@ -208,20 +209,20 @@ function BigInt:__close(): void
   self:destroy()
 end
 
--- Returns the total storage size in bytes (`#` unary operator).
-function BigInt.__len(x: BigInt): usize
-  if not x.mpz or mpz_sgn(x.mpz) == 0 then return 0 end
-  return (mpz_sizeinbase(x.mpz, 2) + 7) // 8
-end
-
 -- Returns true if the big integer is properly allocated and initialized.
 function BigInt.isvalid(x: BigInt): boolean
   return x.mpz ~= nilptr and x.mpz._mp_d ~= nilptr
 end
 
+-- Returns the total storage size in bytes (`#` unary operator).
+function BigInt.__len(x: BigInt): usize
+  if not x:isvalid() or mpz_sgn(x.mpz) == 0 then return 0 end
+  return (mpz_sizeinbase(x.mpz, 2) + 7) // 8
+end
+
 -- Returns the sign of the big integer, -1 if negative, 0 if zero, 1 if positive.
 function BigInt.sign(x: BigInt_convertible): int32
-  if not x.mpz then return 0 end -- not initialized
+  if not x:isvalid() then return 0 end
   local s: cint = mpz_sgn(x.mpz)
   return s
 end
@@ -234,16 +235,15 @@ function BigInt.new(): BigInt
   return self
 end
 
--- Returns a clone of another big integer.
+-- Creates a new big integer with the same value of another big integer.
 function BigInt.clone(x: BigInt): BigInt
+  ## ensure_bigints(x)
   local clone: BigInt = BigInt.new()
-  if x:isvalid() then
-    mpz_set(clone.mpz, x.mpz)
-  end
+  mpz_set(clone.mpz, x.mpz)
   return clone
 end
 
--- Copy the value of other big integer into this one (in-place).
+-- Copy the value of another big integer (in-place).
 function BigInt:copy_(x: BigInt_convertible): BigInt
   ## ensure_bigints(x)
   if not self.mpz then
@@ -255,16 +255,16 @@ function BigInt:copy_(x: BigInt_convertible): BigInt
   return $self
 end
 
+-- Return the total storage size in bits.
+function BigInt.bitlen(x: BigInt): usize
+  if not x:isvalid() or mpz_sgn(x.mpz) == 0 then return 0 end
+  return mpz_sizeinbase(x.mpz, 2)
+end
+
 -- Returns bit at position `pos`.
 function BigInt.getbit(x: BigInt_convertible, pos: usize): uint8
   ## ensure_bigints(x)
   return mpz_tstbit(x.mpz, pos)
-end
-
--- Return the total storage size in bits.
-function BigInt.bitlen(x: BigInt): usize
-  if not x.mpz or mpz_sgn(x.mpz) == 0 then return 0 end
-  return mpz_sizeinbase(x.mpz, 2)
 end
 
 --------------------------------------------------------------------------------
@@ -276,11 +276,16 @@ function BigInt.frombytes(data: string, little_endian: facultative(boolean)): Bi
   local little_endian: boolean = false
   ## end
   local res: BigInt = BigInt.new()
-  mpz_import(res.mpz, data.size, little_endian and -1 or 1, #@byte, 0, 0, data.data)
+  if data.size > 0 then
+    mpz_import(res.mpz, data.size, little_endian and -1 or 1, #@byte, 0, 0, data.data)
+  end
   return res
 end
 
--- Creates a new big integer from string `s` in base `base`.
+--[[
+Creates a new big integer from string `s` in base `base`.
+In case the input string is malformed, then a big integer in invalid state is returned.
+]]
 function BigInt.fromstring(s: string, base: facultative(int32)): BigInt
   local self: BigInt = BigInt.new()
   ## if base.type.is_niltype then
@@ -296,14 +301,17 @@ function BigInt.fromstring(s: string, base: facultative(int32)): BigInt
   end
   ## end
   -- TODO: ensure 's' is null terminated
-  assert(mpz_set_str(self.mpz, s, base) == 0, 'mpz_set_str failed')
+  if mpz_set_str(self.mpz, s, base) ~= 0 then
+    self:destroy()
+  end
   return self
 end
 
 --[[
-Creates a big integer from a decimal string.
+Creates a new big integer from a decimal string.
 The returned big integer is multiplied by `10^decimal_places` so decimals are not lost.
 Any decimals after `decimal_places` decimals are discarded.
+In case the input string is malformed, then a big integer in invalid state is returned.
 ]]
 function BigInt.fromdecimal(s: string, decimal_places: usize): BigInt
   local found_decimal: boolean
@@ -333,12 +341,20 @@ function BigInt.fromdecimal(s: string, decimal_places: usize): BigInt
   return BigInt.fromstring(sb:view())
 end
 
+--[[
+Creates a new big integer from a decimal string.
+This always succeeds.
+]]
 function BigInt.frominteger(x: integer): BigInt
   local self: BigInt = BigInt.new()
   mpz_set_si(self.mpz, x)
   return self
 end
 
+--[[
+Creates a new big integer from a number, string or another big integer.
+In case the input string is malformed, then a big integer in invalid state is returned.
+]]
 function BigInt.from(v: BigInt_convertible): BigInt
   ## if v.type.is_integral then
     return BigInt.frominteger(v)
@@ -352,6 +368,7 @@ end
 --------------------------------------------------------------------------------
 -- Functions for serializing big integers
 
+-- Returns the big integer bytes as string of bytes, that is, in binary form (not human readable).
 function BigInt.tobytes(x: BigInt_convertible, little_endian: facultative(boolean), size: facultative(usize)): string
   ## ensure_bigints(x)
   ## if little_endian.type.is_niltype then
@@ -361,20 +378,23 @@ function BigInt.tobytes(x: BigInt_convertible, little_endian: facultative(boolea
   local size: usize = #x
   ## end
   assert(size >= #x, 'BigInt.tobytes: desired buffer size is not not enough')
-  local data: string = string.create(size)
-  local data_ptr: *byte = &data.data[0]
-  if size > #x then
-    memory.spanzero(data:span())
-    if not little_endian then
-      data_ptr = &data.data[size - #x]
+  local data: string
+  if size > 0 then
+    data = string.create(size)
+    local data_ptr: *byte = &data.data[0]
+    if size > #x then
+      memory.spanzero(data:span())
+      if not little_endian then
+        data_ptr = &data.data[size - #x]
+      end
     end
+    local len: csize
+    assert(mpz_export(data_ptr, &len, little_endian and -1 or 1, #@byte, 0, 0, x.mpz) == data_ptr, 'mpz_export failed')
   end
-  local len: csize
-  mpz_export(data_ptr, &len, little_endian and -1 or 1, #@byte, 0, 0, x.mpz)
   return data
 end
 
--- Returns the big integer as a string in the desired base.
+-- Returns the big integer as a human readable string in the desired base.
 function BigInt.tostring(x: BigInt_convertible, base: facultative(int32), minlen: facultative(int32)): string
   ## ensure_bigints(x)
   ## if base.type.is_niltype then
@@ -398,12 +418,13 @@ function BigInt.tostring(x: BigInt_convertible, base: facultative(int32), minlen
   return s
 end
 
--- Returns the big integer as an integer.
+--[[
+Returns the big integer as an integer.
+Integer not in the `integer` type range, its values will wrap around.
+]]
 function BigInt.tointeger(x: BigInt_convertible): integer
   ## ensure_bigints(x)
-  -- TODO: this can be optimized
-  local s: string <close> = x:tostring()
-  return tointeger(s)
+  return mpz_get_si(x.mpz)
 end
 
 -- Returns the big integer as a string in decimal base (to allow using `tostring` function).
@@ -423,14 +444,16 @@ It uses `math.random` to generate random,
 thus the random seed can be changed by calling `math.seed` before this function.
 ]]
 function BigInt.randombytes(size: usize): BigInt
-  local rands: span(integer) = new(@integer, (size + #@integer - 1) // #@integer)
-  defer delete(rands) end
-  for i: usize=0,<#rands do
-    rands[i] = math.random(0)
-  end
-  local data: span(byte) = rands:as(@byte)
   local res: BigInt = BigInt.new()
-  mpz_import(res.mpz, size, 1, #@byte, 0, 0, data.data)
+  if size > 0 then
+    local rands: span(integer) = new(@integer, (size + #@integer - 1) // #@integer)
+    defer delete(rands) end
+    for i: usize=0,<#rands do
+      rands[i] = math.random(0)
+    end
+    local data: span(byte) = rands:as(@byte)
+    mpz_import(res.mpz, size, 1, #@byte, 0, 0, data.data)
+  end
   return res
 end
 
@@ -449,9 +472,9 @@ end
 
 -- Less than comparison.
 function BigInt.lt(a: BigInt_convertible, b: BigInt_convertible): boolean
-  ## if b.type.is_integral then
+  ## if b.type.is_integral then ensure_bigints(a)
     return mpz_cmp_si(a.mpz, b) < 0
-  ## elseif a.type.is_integral then
+  ## elseif a.type.is_integral then ensure_bigints(b)
     return mpz_cmp_si(b.mpz, a) > 0
   ## else ensure_bigints(a, b)
     return mpz_cmp(a.mpz, b.mpz) < 0
@@ -460,9 +483,9 @@ end
 
 -- Less or equal than comparison.
 function BigInt.le(a: BigInt_convertible, b: BigInt_convertible): boolean
-  ## if b.type.is_integral then
+  ## if b.type.is_integral then ensure_bigints(a)
     return mpz_cmp_si(a.mpz, b) <= 0
-  ## elseif a.type.is_integral then
+  ## elseif a.type.is_integral then ensure_bigints(b)
     return mpz_cmp_si(b.mpz, a) >= 0
   ## else ensure_bigints(a, b)
     return mpz_cmp(a.mpz, b.mpz) <= 0
