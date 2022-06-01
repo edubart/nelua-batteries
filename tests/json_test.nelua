@@ -10,28 +10,35 @@ nester.describe("json", function()
   nester.it("primitives", function()
     local Foo: type = @record{
       i: integer,
+      inull: integer,
       n: number,
       s: string,
+      snull: string,
       bt: boolean,
       bf: boolean,
-      bn: boolean,
+      bmissing: boolean,
     }
     local primjson: string = [[{
       "i": 1337,
+      "inull": null,
       "n": 0.5,
       "s": "test",
+      "snull": null,
       "bt": true,
       "bf": false,
     }]]
     local foo: Foo, err: string, len: usize = json.parse(primjson, @Foo)
+    assert(#err == 0, err)
     expect.equal(foo.i, 1337)
+    expect.equal(foo.inull, 0)
     expect.equal(foo.n, 0.5)
     expect.equal(foo.s, "test")
+    expect.equal(foo.snull, "")
     expect.equal(foo.bt, true)
     expect.equal(foo.bf, false)
     expect.equal(len, #primjson)
     expect.equal(#err, 0)
-    expect.equal(json.emit(foo), [[{"i":1337,"n":0.5,"s":"test","bt":true,"bf":false,"bn":false}]])
+    expect.equal(json.emit(foo), [[{"i":1337,"inull":0,"n":0.5,"s":"test","snull":"","bt":true,"bf":false,"bmissing":false}]])
   end)
 
   nester.it("record", function()

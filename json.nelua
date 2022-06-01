@@ -104,6 +104,7 @@ This parser follow these rules:
 * The schema `T` types cannot mismatch the JSON chunk, otherwise parse error will occur.
 * The schema `T` must always be a `record`, `hashmap`, `vector,` or `sequence` type.
 * Missing fields in the JSON chunk will be initialized to zeros.
+* Fields with `null` value in the JSON chunk will be initialized to zeros.
 * Parsed strings and containers allocates new memory.
 * Follows JSON 4 spec (JSON 5 is not supported).
 
@@ -139,7 +140,7 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
   ## end
   ## local function expect_token(ec, noskip)
     if i >= slen or s[i] ~= #[string.byte(ec)]# then
-      return res, #['expected token `'..ec..'`, perhaps due to schema mismatch']#, i
+      return res, #['expected token `'..ec..'`, perhaps JSON schema has incompatible fields']#, i
     end
     i = i + 1
     ## if not noskip then skip_whitespaces() end
@@ -169,31 +170,47 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
     ## skip_whitespaces()
   ## end
   ## local function expect_value(vtype)
-    ## if vtype.is_float then
-      ## expect_number()
-      local ok: boolean, v: #[vtype]# = strconv.str2num(tmpstr)
-      if not ok then
-        err = 'malformed number'
-      end
-    ## elseif vtype.is_integral then
-      ## expect_number()
-      local ok: boolean, v: #[vtype]# = strconv.str2int(tmpstr, 10)
-      if not ok then
-        err = 'malformed integer'
-      end
-    ## elseif vtype.is_boolean then
-      ## expect_boolean()
-      local v: #[vtype]# = tmpstr == 'true'
-      if not v and tmpstr ~= 'false' then
-        err = 'expected a boolean, perhaps due to schema mismatch'
-      end
-    ## elseif vtype.is_string then
-      ## expect_string()
-      local v: #[vtype]#, err: string = unescape(tmpstr)
-    ## elseif vtype.is_record then
-      local v: #[vtype]#, err: string, advlen: usize = json.parse(string{data=&s[i],size=slen-i}, #[vtype]#)
-      i = i + advlen
-    ## else static_error("cannot parse element of type '%s'", vtype) end
+    local v: #[vtype]#;
+    if i+3 < slen and s[i] == 'n'_b and s[i+1] == 'u'_b and s[i+2] == 'l'_b and s[i+3] == 'l'_b then -- null?
+      i = i + 4
+    else
+      ## if vtype.is_pointer then
+        local pv: #[vtype]#
+        do
+          ## expect_value(vtype.subtype)
+          pv = new(v)
+        end
+        v = pv
+      ## elseif vtype.is_float then
+        ## expect_number()
+        local ok: boolean
+        ok, v = strconv.str2num(tmpstr)
+        if not ok then
+          err = 'malformed JSON number'
+        end
+      ## elseif vtype.is_integral then
+        ## expect_number()
+        local ok: boolean
+        ok, v = strconv.str2int(tmpstr, 10)
+        if not ok then
+          err = 'malformed JSON integer'
+        end
+      ## elseif vtype.is_boolean then
+        ## expect_boolean()
+        v = tmpstr == 'true'
+        if not v and tmpstr ~= 'false' then
+          err = 'malformed JSON boolean'
+        end
+      ## elseif vtype.is_string then
+        ## expect_string()
+        local err: string
+        v, err = unescape(tmpstr)
+      ## elseif vtype.is_record then
+        local err: string, advlen: usize
+        v, err, advlen = json.parse(string{data=&s[i],size=slen-i}, #[vtype]#)
+        i = i + advlen
+      ## else static_error("cannot parse element of type '%s'", vtype) end
+    end
   ## end
   -- begin parsing
   ## skip_whitespaces() -- skip leading whitespaces
@@ -233,7 +250,7 @@ function json.parse(chunk: string, T: type): (auto, string, usize)
           goto nextfield
         end
       ## end
-      return res, "found extra fields not defined in the schema", i
+      return res, "JSON has invalid or incompatible fields with its schema", i
 ::nextfield::
       ## skip_comma_peek_char()
     end
@@ -255,52 +272,56 @@ function json.emit(obj: auto, sb: facultative(*stringbuilder))
   local sbo: stringbuilder
   local sb: *stringbuilder = &sbo
   ## end
-  ## local objtype = obj.type:implicit_deref_type() -- consider pointers
-  -- macros
-  ## local function emit_value(v)
-    ## if v.type.subtype.is_scalar or v.type.subtype.is_boolean then
-      sb:write($#[v]#)
-    ## elseif v.type.subtype.is_stringy then
-      sb:write('"', $#[v]#, '"')
-    ## elseif v.type.subtype.is_record then
-      json.emit(#[v]#, sb)
-    ## else static_error("cannot emit element of type '%s'", v.type.subtype) end
+  -- consider pointers
+  ## local derefobjtype = obj.type:implicit_deref_type()
+  ## if obj.type.is_pointer then
+  if obj == nilptr then
+    sb:write('null')
+    goto finish
+  end
   ## end
   -- emit
-  ## if objtype.is_vector or objtype.is_sequence or objtype.is_array or objtype.is_span then
+  ## if obj.type.is_scalar or obj.type.is_boolean then
+    sb:write(obj)
+  ## elseif obj.type.is_pointer and (obj.type.subtype.is_scalar or obj.type.subtype.is_boolean) then
+    sb:write($obj)
+  ## elseif obj.type.is_stringy then
+    sb:write('"', obj, '"')
+  ## elseif obj.type.is_pointer and obj.type.subtype.is_string then
+    sb:write('"', $obj, '"')
+  ## elseif derefobjtype.is_vector or derefobjtype.is_sequence or derefobjtype.is_array or derefobjtype.is_span then
     -- emit contiguous container as an array
-    local T: type = #[objtype.subtype]#
+    local T: type = #[derefobjtype.subtype]#
     sb:write'['
-    for _: isize, v: *T in mipairs(obj) do
-      ## emit_value(v)
+    for i: isize, v: T in ipairs(obj) do
+      json.emit(v, sb)
       sb:write','
     end
     if #obj > 0 then sb:rollback(1) end -- remove extra comma
     sb:write']'
-  ## elseif objtype.is_hashmap then -- emit hashmap as an object
-    local K: type, V: type = #[objtype.K]#, #[objtype.V]#
+  ## elseif derefobjtype.is_hashmap then -- emit hashmap as an object
+    local K: type, V: type = #[derefobjtype.K]#, #[derefobjtype.V]#
     sb:write'{'
-    for k: K, v: *V in mpairs(obj) do
-      local pk: *K = &k
-      ## emit_value(pk)
+    for k: K, v: V in pairs(obj) do
+      json.emit(k, sb)
       sb:write':'
-      ## emit_value(v)
+      json.emit(v, sb)
       sb:write','
     end
     if #obj > 0 then sb:rollback(1) end -- remove extra comma
     sb:write'}'
-  ## elseif objtype.is_record then -- emit record as an object
+  ## elseif derefobjtype.is_record then -- emit record as an object
     sb:write'{'
-    ## for i,field in ipairs(objtype.fields) do
+    ## for i,field in ipairs(derefobjtype.fields) do
       sb:write('"', #[field.name]#, '":')
-      local v: auto = &obj.#|field.name|#
-      ## emit_value(v)
-      ## if i<#objtype.fields then
+      json.emit(obj.#|field.name|#, sb)
+      ## if i<#derefobjtype.fields then
         sb:write','
       ## end
     ## end
     sb:write'}'
   ## else static_error("cannot emit JSON from type '%s'", objtype) end
+::finish::
   ## if returnstr then
   return sb:promote()
   ## end
