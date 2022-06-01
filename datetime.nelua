@@ -117,7 +117,7 @@ end
 function datetime.unixmillis(): int64
   local secs: integer, nsecs: integer = os.realtime()
   assert(secs >= 0, 'failed to get current time')
-  return secs * 1000 + nsecs // 1000000
+  return (@int64)(secs) * 1000 + (@int64)(nsecs) // 1000000
 end
 
 return datetime

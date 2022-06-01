@@ -158,7 +158,7 @@ local function mpz_export(a1: pointer, a2: *csize, a3: cint, a4: csize, a5: cint
 -- Helpers
 
 -- Cleanup big integer resources when the garbage collector is enabled.
-function __mpz_struct:__gc()
+function __mpz_struct:__gc(): void
   mpz_clear(self)
 end
 
