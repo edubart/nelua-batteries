@@ -120,4 +120,10 @@ function datetime.unixmillis(): int64
   return (@int64)(secs) * 1000 + (@int64)(nsecs) // 1000000
 end
 
+-- Returns the current Unix time in ISO 8601.
+function datetime.iso8601(): string
+  return datetime.unixmillis_to_iso8601(datetime.unixmillis())
+end
+
+
 return datetime

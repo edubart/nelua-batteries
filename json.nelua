@@ -289,6 +289,8 @@ function json.emit(obj: auto, sb: facultative(*stringbuilder))
     sb:write('"', obj, '"')
   ## elseif obj.type.is_pointer and obj.type.subtype.is_string then
     sb:write('"', $obj, '"')
+  ## elseif obj.type.is_niltype then
+    sb:write('null')
   ## elseif derefobjtype.is_vector or derefobjtype.is_sequence or derefobjtype.is_array or derefobjtype.is_span then
     -- emit contiguous container as an array
     local T: type = #[derefobjtype.subtype]#
