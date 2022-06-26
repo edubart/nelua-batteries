@@ -1,5 +1,7 @@
 require 'tuple'
 
 local pair = tuple.pack(true, 10)
-local bool_value, int_value = tuple.unpack(pair)
-print(bool_value, int_value)
+print(pair[0], pair[1])
+
+local first_value, second_value = tuple.unpack(pair)
+print(first_value, second_value)
