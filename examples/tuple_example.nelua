@@ -1,0 +1,5 @@
+require 'tuple'
+
+local pair = tuple.pack(true, 10)
+local bool_value, int_value = tuple.unpack(pair)
+print(bool_value, int_value)
