@@ -1,0 +1,7 @@
+require 'tuple'
+
+local pair = tuple.pack(true, 10)
+print(pair[0], pair[1])
+
+local first_value, second_value = tuple.unpack(pair)
+print(first_value, second_value)
