@@ -74,8 +74,8 @@ nester.describe("fs", function()
     ## if not ccinfo.is_windows then
       local si: fs.StatInfo = fs.stat('tmpfile')
       expect.truthy(fs.chown('tmpfile', si.uid, si.gid))
+      expect.truthy(fs.chmod('tmpfile', si.mode))
     ## end
-    expect.truthy(fs.chmod('tmpfile', si.mode))
   end)
 
   nester.it("cpfile", function()

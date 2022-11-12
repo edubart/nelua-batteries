@@ -15,6 +15,7 @@ require 'string'
 
 ## if ccinfo.is_windows then -- Import Windows APIs
 -- fcntl.h
+local O_BINARY: cint <cimport'_O_BINARY',cinclude'<fcntl.h>',const>
 local O_RDONLY: cint <cimport'_O_RDONLY',cinclude'<fcntl.h>',const>
 local O_WRONLY: cint <cimport'_O_WRONLY',cinclude'<fcntl.h>',const>
 local O_CREAT: cint <cimport'_O_CREAT',cinclude'<fcntl.h>',const>
@@ -44,8 +45,8 @@ local stat_t: type <cimport,cinclude'<sys/stat.h>',ctypedef'_stat64'> = @record{
   st_mtime: int64,
   st_ctime: int64,
 }
-local _S_IREAD: cint <cimport,cinclude'<sys/stat.h>',const>
-local _S_IWRITE: cint <cimport,cinclude'<sys/stat.h>',const>
+local _S_IREAD: cuint <cimport,cinclude'<sys/stat.h>',const>
+local _S_IWRITE: cuint <cimport,cinclude'<sys/stat.h>',const>
 local _S_IFREG: cuint <cimport,cinclude'<sys/stat.h>',const>
 local _S_IFDIR: cuint <cimport,cinclude'<sys/stat.h>',const>
 local _S_IFCHR: cuint <cimport,cinclude'<sys/stat.h>',const>
@@ -101,6 +102,7 @@ local function GetFinalPathNameByHandleA(
 ): clong <cimport,cinclude'@windows.h'> end
 ## else -- Import POSIX APIs
 -- fcntl.h
+local O_BINARY: cint <comptime> = 0
 local O_RDONLY: cint <cimport,cinclude'<fcntl.h>',const>
 local O_WRONLY: cint <cimport,cinclude'<fcntl.h>',const>
 local O_CREAT: cint <cimport,cinclude'<fcntl.h>',const>
@@ -295,9 +297,9 @@ If the file exists, it will be overwritten.
 ]]
 function fs.mkfile(path: string, contents: facultative(string)): (boolean, string, integer)
   ## if ccinfo.is_windows then
-  local fd: cint = open(path, O_CREAT|O_WRONLY|O_TRUNC, _S_IREAD|_S_IWRITE)
+  local fd: cint = open(path, O_CREAT|O_WRONLY|O_TRUNC|O_BINARY, _S_IREAD|_S_IWRITE)
   ## else
-  local fd: cint = open(path, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH)
+  local fd: cint = open(path, O_CREAT|O_WRONLY|O_TRUNC|O_BINARY, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH)
   ## end
   if fd < 0 then
     return result_from_errno(false)
@@ -411,7 +413,7 @@ end
 
 -- Reads all contents from a file.
 function fs.readfile(path: string): (string, string, integer)
-  local fd: cint = open(path, O_RDONLY, 0)
+  local fd: cint = open(path, O_RDONLY|O_BINARY, 0)
   if fd < 0 then
     return (@string){}, strerror(errno), errno
   end
@@ -467,14 +469,14 @@ File permissions are preserved.
 ]]
 function fs.cpfile(oldpath: string, newpath: string): (boolean, string, integer)
   -- acquire a file descriptor for the input file
-  local ifd: cint = open(oldpath, O_RDONLY, 0)
+  local ifd: cint = open(oldpath, O_RDONLY|O_BINARY, 0)
   if ifd < 0 then return result_from_errno(false) end
   defer close(ifd) end
   -- retrieve mode information from the input file
   local si: stat_t
   if fstat(ifd, &si) ~= 0 then return result_from_errno(false) end
   -- create an output file and acquire its FD
-  local ofd: cint = open(newpath, O_CREAT|O_WRONLY|O_TRUNC, si.st_mode)
+  local ofd: cint = open(newpath, O_CREAT|O_WRONLY|O_TRUNC|O_BINARY, si.st_mode)
   if ofd < 0 then return result_from_errno(false) end
   defer close(ofd) end
   -- perform file copy in chunks until end of file

@@ -77,7 +77,7 @@ do -- sign
 end
 do -- tointeger
   assert(BigInt.tointeger('0x7fffffff') == 0x7fffffff)
-  assert(BigInt.tointeger('0x0123456789abcdef0123456789abcdef') & 0xffffffff == 0x89abcdef)
+  assert(BigInt.tointeger('0x0123456789abcdef0123456789abcdef') & 0xfffffff == 0x9abcdef)
 end
 
 do -- tobytes
