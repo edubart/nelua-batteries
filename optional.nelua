@@ -1,0 +1,62 @@
+require 'string'
+
+## local make_optionalT = generalize(function(T)
+  local T = @#[T]#
+
+  local OptionalT <nickname #[string.format('optional(%s)', T)]#> = @record{
+    filled: boolean,
+    value: T
+  }
+
+  ## OptionalT.value.is_optional = true
+  ## OptionalT.value.subtype = T
+
+
+  function OptionalT.__convert(x: auto): OptionalT
+    ## if x.type == T then
+    return OptionalT{filled=true, value=x}
+    ## elseif x.type.is_niltype then
+    return OptionalT{filled=false}
+    ## else static_error("cannot convert type '%s' to '%s'", x.type, OptionalT.value) end
+  end
+
+  function OptionalT.__converttoT(self: OptionalT): T
+    return
+  end
+
+  function OptionalT.__tostring(self: OptionalT): string
+    if not self.filled then return string.copy('nil') end
+    return tostring(self.value)
+  end
+
+  function OptionalT.__eq(a: auto, b: auto): boolean
+    ## if a.type.is_optional and b.type.is_optional then
+      return a.filled == b.filled and a.value == b.value
+    ## elseif a.type.is_niltype then
+      return b.filled == false
+    ## elseif b.type.is_niltype then
+      return a.filled == false
+    ## elseif a.type == T then
+      return b.filled and b.value == b
+    ## elseif b.type == T then
+      return a.filled and a.value == b
+    ## else
+      return false
+    ## end
+  end
+
+  ## return OptionalT
+## end)
+
+global optional: type = #[make_optionalT]#
+
+##[[
+-- Support '?integer' syntax sugar for 'optional(integer)'
+local analyzer = require 'nelua.analyzer'
+function analyzer.visitors.OptionalType(context, node)
+  local newnode = aster.GenericType{aster.Id{'optional'}, {node[1]}}
+  context:transform_and_traverse_node(node, newnode)
+end
+]]
+
+return optional

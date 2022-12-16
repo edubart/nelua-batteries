@@ -1,0 +1,8 @@
+require 'optional'
+
+local o: ?integer
+print(o)
+print(o == nil)
+o = 1
+print(o)
+print(o == nil)
