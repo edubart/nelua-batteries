@@ -168,6 +168,7 @@ local function utime(file: cstring, times: *utimbuf): cint <cimport,cinclude'<ut
 local function rename(old: cstring, new: cstring): cint <cimport,cinclude'<stdio.h>'> end
 local function strerror(errnum: cint): cstring <cimport,cinclude'<string.h>'> end
 local errno: cint <cimport,cinclude'<errno.h>'>
+local EINTR: cint <cimport,cinclude'<errno.h>'>
 
 ----------------------------------------------------------------------------------------------------
 
@@ -309,12 +310,15 @@ function fs.mkfile(path: string, contents: facultative(string)): (boolean, strin
   if contents.size > 0 then
     local writtenbytes: usize = 0
     repeat -- keep writing until all bytes are written
-      local remaning: usize = contents.size - writtenbytes
-      if remaning > 4096 then remaning = 4096 end
-      local writebytes: isize = write(fd, &contents.data[writtenbytes], remaning)
-      if writebytes < 0 then return result_from_errno(false) end
-      -- the write may be incomplete, keep writing until finished
-      writtenbytes = writtenbytes + (@usize)(writebytes)
+      local remaining: usize = contents.size - writtenbytes
+      if remaining > IO_CHUNK_SIZE then remaining = IO_CHUNK_SIZE end
+      local writebytes: isize = write(fd, &contents.data[writtenbytes], remaining)
+      if writebytes < 0 and errno ~= EINTR then
+        return result_from_errno(false)
+      elseif writebytes > 0 then
+        -- the write may be incomplete, keep writing until finished
+        writtenbytes = writtenbytes + (@usize)(writebytes)
+      end
     until writtenbytes >= contents.size
   end
   ## end
@@ -426,11 +430,12 @@ function fs.readfile(path: string): (string, string, integer)
       return (@string){}, 'out of buffer memory', -1
     end
     local nr: isize = read(fd, p.data, IO_CHUNK_SIZE)
-    if nr < 0 then
+    if nr < 0 and errno ~= EINTR then
       sb:destroy()
       return (@string){}, strerror(errno), errno
+    elseif nr > 0 then
+      sb:commit((@usize)(nr))
     end
-    sb:commit((@usize)(nr))
   until nr < IO_CHUNK_SIZE
   return sb:promote(), (@string){}, 0
 end
@@ -488,9 +493,12 @@ function fs.cpfile(oldpath: string, newpath: string): (boolean, string, integer)
       local writtenbytes: usize = 0
       repeat -- keep writing until all read bytes are written
         local writebytes: isize = write(ofd, &buf[writtenbytes], (@usize)(readbytes) - writtenbytes)
-        if writebytes < 0 then return result_from_errno(false) end
-        -- the write may be incomplete, keep writing until finished
-        writtenbytes = writtenbytes + (@usize)(writebytes)
+        if writebytes < 0 and errno ~= EINTR then
+          return result_from_errno(false)
+        elseif writebytes > 0 then
+          -- the write may be incomplete, keep writing until finished
+          writtenbytes = writtenbytes + (@usize)(writebytes)
+        end
       until writtenbytes >= (@usize)(readbytes)
     end
   until readbytes == 0
